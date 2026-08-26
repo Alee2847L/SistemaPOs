@@ -10,7 +10,8 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-$accion = $_POST['accion'] ?? $_GET['accion'] ?? '';
+// Usamos $_REQUEST para capturar tanto GET (en listar/obtener) como POST (en guardar/eliminar) sin problemas
+$accion = $_REQUEST['accion'] ?? '';
 $rolUsuario = $_SESSION['usuario_rol'] ?? 'vendedor';
 
 // --- 1. LISTAR CLIENTES (Con cálculo de mora y campos nuevos) ---
@@ -18,12 +19,12 @@ if ($accion === 'listar') {
     try {
         $sql = "SELECT 
                     c.*,
-                    COALESCE(MAX(DATEDIFF(CURRENT_DATE, cu.fecha_vencimiento)), 0) AS dias_mora
+                    COALESCE(MAX(DATEDIFF(CURDATE(), cu.fecha_vencimiento)), 0) AS dias_mora
                 FROM clientes c
                 LEFT JOIN contratos con ON c.codigo_bp = con.codigo_bp AND con.estado = 'ACTIVO'
                 LEFT JOIN cuotas_contrato cu ON con.id = cu.contrato_id 
                     AND cu.estado = 'PENDIENTE' 
-                    AND cu.fecha_vencimiento < CURRENT_DATE
+                    AND cu.fecha_vencimiento < CURDATE()
                 GROUP BY c.codigo_bp
                 ORDER BY c.codigo_bp ASC";
 
@@ -36,15 +37,14 @@ if ($accion === 'listar') {
     exit;
 }
 
-// --- 2. OBTENER UN CLIENTE (CORREGIDO) ---
+// --- 2. OBTENER UN CLIENTE ---
 if ($accion === 'obtener') {
-    $codigo_bp = trim($_GET['codigo_bp'] ?? '');
+    $codigo_bp = trim($_GET['codigo_bp'] ?? $_POST['codigo_bp'] ?? '');
     $stmt = $pdo->prepare("SELECT *, limite_credito FROM clientes WHERE codigo_bp = ?");
     $stmt->execute([$codigo_bp]);
     $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($cliente) {
-        // Aseguramos que limite_credito viaje correctamente como float
         $cliente['limite_credito'] = floatval($cliente['limite_credito'] ?? 0);
         echo json_encode(['success' => true, 'data' => $cliente]);
     } else {
