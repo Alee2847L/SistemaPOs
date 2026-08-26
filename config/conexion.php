@@ -1,0 +1,31 @@
+<?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$host = "sql209.infinityfree.com";
+$dbname = "if0_42542842_misistemapos";
+$user = "if0_42542842";
+$pass = "efTRMDgfw7Ap";
+
+
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die(json_encode(['error' => 'Error de conexión: ' . $e->getMessage()]));
+}
+
+// Función helper para verificar roles
+function verificarAcceso($rolRequerido = null) {
+    if (!isset($_SESSION['usuario_id'])) {
+        header('Location: ../views/login.php');
+        exit;
+    }
+    if ($rolRequerido && $_SESSION['usuario_rol'] !== $rolRequerido) {
+        http_response_code(403);
+        echo "Acceso denegado: Se requieren permisos de " . $rolRequerido;
+        exit;
+    }
+}
+?>
