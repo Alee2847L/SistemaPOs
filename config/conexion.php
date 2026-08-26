@@ -3,10 +3,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$host = "sql209.infinityfree.com";
-$dbname = "if0_42542842_misistemapos";
-$user = "if0_42542842";
-$pass = "efTRMDgfw7Ap";
+$host = "localhost";
+$dbname = "pos_db_empresa1_0";
+$user = "administrador";
+$pass = "admin123";
 
 
 try {
