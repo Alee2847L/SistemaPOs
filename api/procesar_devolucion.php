@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $metodoOriginal = "Devolución por: " . $motivo . ($comentario ? " - " . $comentario : "");
         $totalReembolso = abs($ventaOriginal['total']);
+        $codigoBpCliente = $ventaOriginal['cliente_codigo_bp'] ?? '';
 
         // 4. Registrar primero en la tabla 'devoluciones' para obtener el ID principal
         $stmtLogDev = $pdo->prepare("
@@ -68,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ventaOriginal['cliente_nombre'] ?? 'Consumidor Final'
         ]);
         
-        $devolucionId = $pdo->lastInsertId(); // Obtenemos el ID recién creado
+        $devolucionId = $pdo->lastInsertId();
 
         // 5. Registrar la devolución como una nueva transacción en NEGATIVO en la tabla 'ventas'
         $stmtInsDev = $pdo->prepare("
@@ -78,13 +79,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $totalNegativo = -1 * $totalReembolso;
         $montoRecibidoDev = -1 * abs($ventaOriginal['monto_recibido'] ?? 0);
-        
-        // Aquí asignamos el total del reembolso a la columna cambio_entregado
         $cambioDevolucion = $totalReembolso; 
 
         $stmtInsDev->execute([
             $ventaOriginal['cliente_identidad'],
-            $ventaOriginal['cliente_codigo_bp'],
+            $codigoBpCliente,
             $adminId,
             $totalNegativo,
             $ventaOriginal['cliente_rtn'] ?? '0000000000000',
@@ -97,7 +96,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $montoRecibidoDev,
         ]);
 
-        // 6. Devolver cantidades al inventario y registrar en 'detalle_devoluciones'
+        // 6. Verificar si la venta fue a crédito y calcular el valor del contrato (monto_abonado - monto_recibido)
+        $esCredito = false;
+        $montoContratoRestaurar = 0.00;
+
+        $metodoPagoOriginal = strtolower($ventaOriginal['metodo_pago'] ?? '');
+        if (strpos($metodoPagoOriginal, 'credito') !== false || strpos($metodoPagoOriginal, 'crédito') !== false) {
+            $esCredito = true;
+            
+            $montoAbonadoReg = floatval($ventaOriginal['monto_abonado'] ?? 0);
+            $montoRecibidoReg = floatval($ventaOriginal['monto_recibido'] ?? 0);
+
+            // Cálculo exacto del contrato: monto_abonado - monto_recibido
+            $montoContratoRestaurar = $montoAbonadoReg - $montoRecibidoReg;
+        }
+
+        // Si fue a crédito y el valor es mayor a 0, sumamos el contrato al límite de crédito del cliente
+        if ($esCredito && !empty($codigoBpCliente) && $montoContratoRestaurar > 0) {
+            $stmtCredito = $pdo->prepare("UPDATE clientes SET limite_credito = limite_credito + ? WHERE codigo_bp = ?");
+            $stmtCredito->execute([$montoContratoRestaurar, $codigoBpCliente]);
+        }
+
+        // 7. Devolver cantidades al inventario y registrar en 'detalle_devoluciones'
         foreach ($detalles as $det) {
             $prodId = $det['producto_id'] ?? null;
             $cantDevolver = $det['cantidad'] ?? 0;
@@ -118,7 +138,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->commit();
-        header("Location: ../views/devoluciones.php?msg=" . urlencode("¡Devolución procesada con éxito! Se reincorporó el inventario, se registró el detalle y se ajustó la caja."));
+        $mensajeExito = "¡Devolución procesada con éxito! Se reincorporó el inventario y se ajustó la caja.";
+        if ($esCredito && $montoContratoRestaurar > 0) {
+            $mensajeExito .= " Además, se restituyeron L. " . number_format($montoContratoRestaurar, 2) . " del contrato al límite de crédito del cliente.";
+        }
+
+        header("Location: ../views/devoluciones.php?msg=" . urlencode($mensajeExito));
         exit();
 
     } catch (Exception $e) {
