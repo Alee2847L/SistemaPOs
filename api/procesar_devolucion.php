@@ -72,8 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 5. Registrar la devolución como una nueva transacción en NEGATIVO en la tabla 'ventas'
         $stmtInsDev = $pdo->prepare("
-            INSERT INTO ventas (cliente_identidad, cliente_codigo_bp, usuario_id, total, estado_caja, cliente_rtn, ahorro_total, monto_abonado, monto_recibido, cambio_entregado, cliente_nombre, tipo_comprobante, metodo_pago) 
-            VALUES (?, ?, ?, ?, 'abierta', ?, ?, ?, ?, ?, ?, 'Devolución', ?)
+            INSERT INTO ventas (cliente_identidad, cliente_codigo_bp, usuario_id, total, estado_caja, cliente_rtn, ahorro_total, monto_abonado, monto_recibido, cambio_entregado, cliente_nombre, tipo_comprobante, metodo_pago, monto_efectivo) 
+            VALUES (?, ?, ?, ?, 'abierta', ?, ?, ?, ?, ?, ?, 'Devolución', ?, ?)
         ");
         
         $totalNegativo = -1 * $totalReembolso;
@@ -93,7 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $montoRecibidoDev,
             $cambioDevolucion,
             $ventaOriginal['cliente_nombre'] ?? 'Consumidor Final',
-            $metodoOriginal
+            $metodoOriginal,
+            $montoRecibidoDev,
         ]);
 
         // 6. Devolver cantidades al inventario y registrar en 'detalle_devoluciones'
