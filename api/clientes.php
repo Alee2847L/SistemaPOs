@@ -14,7 +14,7 @@ if (!isset($_SESSION['usuario_id'])) {
 $accion = $_REQUEST['accion'] ?? '';
 $rolUsuario = $_SESSION['usuario_rol'] ?? 'vendedor';
 
-// --- 1. LISTAR CLIENTES (Con cálculo de mora y campos nuevos) ---
+// --- 1. LISTAR CLIENTES (Con cálculo de mora y campos nuevos corregidos para SQL estricto) ---
 if ($accion === 'listar') {
     try {
         $sql = "SELECT 
@@ -25,7 +25,10 @@ if ($accion === 'listar') {
                 LEFT JOIN cuotas_contrato cu ON con.id = cu.contrato_id 
                     AND cu.estado = 'PENDIENTE' 
                     AND cu.fecha_vencimiento < CURDATE()
-                GROUP BY c.codigo_bp
+                GROUP BY 
+                    c.codigo_bp, c.estado, c.tipo_cliente, c.rtn_dni, 
+                    c.Nombre, c.limite_credito, c.dias_credito, 
+                    c.Telefono, c.Direccion, c.Correo
                 ORDER BY c.codigo_bp ASC";
 
         $stmt = $pdo->query($sql);
