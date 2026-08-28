@@ -5,7 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $host = "localhost";
 $dbname = "pos_db_empresa1_0";
-$user = "administrador";
+$user = "admin";
 $pass = "admin123";
 
 
