@@ -3,7 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$host = "localhost";
+$host = "127.0.0.1";
 $dbname = "pos_db_empresa1_0";
 $user = "administrador";
 $pass = "admin123";
