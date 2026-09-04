@@ -110,7 +110,7 @@ if ($accion === 'solicitar_recuperacion') {
 
         $enlace = "http://bryanmayorga.great-site.net/views/reset-password.php?token=" . $token;
 
-        // --- CONFIGURACIÓN DE PHPMailer CON BREVO SMTP ---
+        // --- CONFIGURACIÓN DE PHPMailer CON MICROSOFT 365 SMTP (USANDO .ENV) ---
         require '../phpmailer/Exception.php';
         require '../phpmailer/PHPMailer.php';
         require '../phpmailer/SMTP.php';
@@ -118,15 +118,15 @@ if ($accion === 'solicitar_recuperacion') {
         $mail = new PHPMailer\PHPMailer\PHPMailer(true);
         try {
             $mail->isSMTP();
-            $mail->Host       = 'smtp-relay.brevo.com';
+            $mail->Host       = $_ENV['MAIL_HOST'] ?? 'smtp.office365.com';
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'b67ddb001@smtp-brevo.com';         
-            $mail->Password   = 'xsmtpsib-d9d6a4a58e4e9bcc763eb86d55ba51213e5e77b89de7a57665c1e454c8648a19-Oj6SKVnn4TfaIzMp'; // Tu clave SMTP generada
+            $mail->Username   = $_ENV['MAIL_USER'] ?? '';         
+            $mail->Password   = $_ENV['MAIL_PASS'] ?? ''; 
             $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = 587;
+            $mail->Port       = $_ENV['MAIL_PORT'] ?? 587;
 
-            // Remitente
-            $mail->setFrom('aleebryanmayorga@gmail.com', 'Sistema POS');
+            // Remitente utilizando tu correo corporativo
+            $mail->setFrom($_ENV['MAIL_FROM'] ?? 'inversionesja@misistemapos.com', $_ENV['MAIL_NAME'] ?? 'Sistema POS');
             $mail->addAddress($email, $user['nombre']);
 
             // Contenido del correo
