@@ -3,9 +3,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$host = "127.0.0.1";
-$dbname = "pos_db_empresa1_0";
-$user = "administrador";
+$host = "localhost";
+$dbname = "misistemapos";
+$user = "admin";
 $pass = "admin123";
 
 
