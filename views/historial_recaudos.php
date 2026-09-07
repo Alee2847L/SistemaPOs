@@ -70,7 +70,7 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
                 // $stmtEliminarOriginal = $pdo->prepare("DELETE FROM transacciones_recaudo WHERE id = ?");
                 // $stmtEliminarOriginal->execute([$recaudo_id_original]);
 
-                // $pdo->commit();
+                $pdo->commit();
                 
                 // Redirigir a imprimir el comprobante de anulación enviando los IDs de las cuotas afectadas
                 echo "<script>window.open('imprimir_comprobante_anulacion.php?id={$nuevoAnulacionId}&original={$recaudo_id_original}&cuotas={$idsCuotasStr}', '_blank'); window.location.href='historial_recaudos.php';</script>";
