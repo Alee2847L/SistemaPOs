@@ -21,16 +21,14 @@ $stmtVentas = $pdo->query("
 ");
 $ventasHoy = $stmtVentas->fetchAll(PDO::FETCH_ASSOC);
 
-// 2. Obtener cuotas pagadas de contratos (recaudos) pendientes de cierre
-// Se filtra que el monto pagado sea mayor a 0 para evitar contratos sin prima o cuotas en 0.00
+// 2. Obtener transacciones de recaudo (incluye pagos positivos y anulaciones/devoluciones negativas) pendientes de cierre
 $stmtRecaudos = $pdo->query("
-    SELECT cc.id as id, 'RECAUDO' as tipo, c.codigo_bp as cliente_codigo_bp, cc.monto_pagado as total, cc.monto_pagado as monto_efectivo, 0 as monto_tarjeta, cc.fecha_pago as fecha, 'EFECTIVO' as metodo_pago, 0 as cambio_entregado, u.nombre as cajero
-    FROM cuotas_contrato cc
-    JOIN contratos c ON cc.contrato_id = c.id
-    LEFT JOIN usuarios u ON cc.usuario_id = u.id
-    WHERE cc.estado = 'PAGADO' 
-      AND cc.monto_pagado > 0 
-      AND (cc.estado_caja = 'abierta' OR cc.estado_caja IS NULL)
+    SELECT tr.id as id, 'RECAUDO' as tipo, c.codigo_bp as cliente_codigo_bp, tr.monto_total as total, tr.monto_total as monto_efectivo, 0 as monto_tarjeta, tr.fecha as fecha, 'EFECTIVO' as metodo_pago, 0 as cambio_entregado, u.nombre as cajero
+    FROM transacciones_recaudo tr
+    JOIN contratos co ON tr.contrato_id = co.id
+    LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
+    LEFT JOIN usuarios u ON tr.usuario_id = u.id
+    WHERE (tr.estado_caja = 'abierta' OR tr.estado_caja IS NULL)
 ");
 $recaudosHoy = $stmtRecaudos->fetchAll(PDO::FETCH_ASSOC);
 
@@ -106,7 +104,7 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
 
             // Actualizar estados a 'cerrada'
             $pdo->query("UPDATE ventas SET estado_caja = 'cerrada' WHERE estado_caja = 'abierta' OR estado_caja IS NULL");
-            $pdo->query("UPDATE cuotas_contrato SET estado_caja = 'cerrada' WHERE estado = 'PAGADO' AND monto_pagado > 0 AND (estado_caja = 'abierta' OR estado_caja IS NULL)");
+            $pdo->query("UPDATE transacciones_recaudo SET estado_caja = 'cerrada' WHERE estado_caja = 'abierta' OR estado_caja IS NULL");
 
             $pdo->commit();
             $mensaje = "<div class='mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-medium'>¡Cierre de caja realizado con éxito! Total registrado: L. " . number_format($totalGeneralContado, 2) . "</div>";
@@ -181,6 +179,9 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
             let tipoTransaccion = t.tipo || 'VENTA';
             let mEfectivo = parseFloat(t.monto_efectivo || 0).toFixed(2);
             let mTarjeta = parseFloat(t.monto_tarjeta || 0).toFixed(2);
+            let totalVal = parseFloat(t.total || 0);
+            let claseMonto = totalVal < 0 ? 'color: red; font-weight: bold;' : '';
+            let textoMonto = totalVal < 0 ? '- L. ' + Math.abs(totalVal).toFixed(2) : 'L. ' + totalVal.toFixed(2);
 
             htmlTransacciones += `
                 <tr>
@@ -188,7 +189,7 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
                     <td style="padding: 8px; border-bottom: 1px solid #ddd;">${cajeroNombre}</td>
                     <td style="padding: 8px; border-bottom: 1px solid #ddd;">${clienteBP}</td>
                     <td style="padding: 8px; border-bottom: 1px solid #ddd;">Efec: L. ${mEfectivo} | Tarj: L. ${mTarjeta}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">L. ${parseFloat(t.total).toFixed(2)}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; ${claseMonto}">${textoMonto}</td>
                 </tr>`;
         });
 
@@ -333,9 +334,9 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
-                    <h5 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Ingresos Acumulados (Turno Actual)</h5>
+                    <h5 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Ingresos Netos Acumulados (Turno Actual)</h5>
                     <h2 class="text-2xl sm:text-3xl font-extrabold text-emerald-600 mb-2">L. <?php echo number_format($totalVentasDia, 2); ?></h2>
-                    <p class="text-xs sm:text-sm text-slate-600 mb-2">Efectivo esperado en caja (Ventas + Recaudos): <strong class="text-slate-900">L. <?php echo number_format($totalEfectivoSistema, 2); ?></strong></p>
+                    <p class="text-xs sm:text-sm text-slate-600 mb-2">Efectivo esperado en caja (Ventas + Recaudos netos de devoluciones): <strong class="text-slate-900">L. <?php echo number_format($totalEfectivoSistema, 2); ?></strong></p>
                     <p class="text-xs sm:text-sm text-slate-600 mb-6">Tarjetas esperadas: <strong class="text-slate-900">L. <?php echo number_format($totalTarjetaSistema, 2); ?></strong></p>
                 </div>
                 
@@ -365,7 +366,7 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
 
         <!-- Tabla detallada de transacciones y recaudos actuales -->
         <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <h4 class="font-bold text-slate-900 text-base mb-4">Detalle de Ventas y Recaudos (Turno Activo)</h4>
+            <h4 class="font-bold text-slate-900 text-base mb-4">Detalle de Ventas, Recaudos y Devoluciones (Turno Activo)</h4>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="w-full text-left border-collapse">
                     <thead>
@@ -381,11 +382,17 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
                     </thead>
                     <tbody class="divide-y divide-slate-200 text-xs sm:text-sm text-slate-700 bg-white">
                         <?php if(count($transacciones) > 0): ?>
-                            <?php foreach($transacciones as $t): ?>
-                            <tr class="hover:bg-slate-50/80 transition">
+                            <?php foreach($transacciones as $t): 
+                                $esDevolucion = floatval($t['total']) < 0;
+                            ?>
+                            <tr class="hover:bg-slate-50/80 transition <?php echo $esDevolucion ? 'bg-rose-50/40' : ''; ?>">
                                 <td class="py-3 px-4 font-semibold">
                                     <?php if(($t['tipo'] ?? 'VENTA') === 'RECAUDO'): ?>
-                                        <span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md text-[10px] font-bold">RECAUDO</span> #<?php echo $t['id']; ?>
+                                        <?php if($esDevolucion): ?>
+                                            <span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-md text-[10px] font-bold">ANULACIÓN</span> #<?php echo $t['id']; ?>
+                                        <?php else: ?>
+                                            <span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md text-[10px] font-bold">RECAUDO</span> #<?php echo $t['id']; ?>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md text-[10px] font-bold">VENTA</span> #<?php echo $t['id']; ?>
                                     <?php endif; ?>
@@ -395,7 +402,9 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
                                 <td class="py-3 px-4 text-slate-600 font-medium">L. <?php echo number_format($t['monto_efectivo'] ?? 0, 2); ?></td>
                                 <td class="py-3 px-4 text-slate-600 font-medium">L. <?php echo number_format($t['monto_tarjeta'] ?? 0, 2); ?></td>
                                 <td class="py-3 px-4 text-slate-600"><?php echo $t['fecha']; ?></td>
-                                <td class="py-3 px-4 font-bold text-slate-900">L. <?php echo number_format($t['total'], 2); ?></td>
+                                <td class="py-3 px-4 font-bold <?php echo $esDevolucion ? 'text-rose-600' : 'text-slate-900'; ?>">
+                                    <?php echo $esDevolucion ? '- L. ' . number_format(abs(floatval($t['total'])), 2) : 'L. ' . number_format(floatval($t['total']), 2); ?>
+                                </td>
                             </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -442,7 +451,7 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
                                 </button>
                             </td>
                         </tr>
-                        <?php endwhile; ?>
+                        <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
