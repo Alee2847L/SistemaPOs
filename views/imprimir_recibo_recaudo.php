@@ -23,14 +23,14 @@ if (!$recaudo_id) {
 }
 
 try {
-    // 1. Obtener la cabecera del pago usando la tabla cuotas_contrato y relacionando el contrato y cliente
+    // 1. Obtener la cabecera del pago desde la tabla maestra transacciones_recaudo
     $stmtRecaudo = $pdo->prepare("
-        SELECT cc.*, co.id AS id_contrato, c.Nombre AS cliente_nombre, c.rtn_dni, c.codigo_bp, u.nombre AS cajero_nombre
-        FROM cuotas_contrato cc
-        LEFT JOIN contratos co ON cc.contrato_id = co.id
+        SELECT tr.*, co.id AS id_contrato, c.Nombre AS cliente_nombre, c.rtn_dni, c.codigo_bp, u.nombre AS cajero_nombre
+        FROM transacciones_recaudo tr
+        JOIN contratos co ON tr.contrato_id = co.id
         LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
-        LEFT JOIN usuarios u ON cc.usuario_id = u.id
-        WHERE cc.id = ?
+        LEFT JOIN usuarios u ON tr.usuario_id = u.id
+        WHERE tr.id = ?
     ");
     $stmtRecaudo->execute([$recaudo_id]);
     $recaudo = $stmtRecaudo->fetch(PDO::FETCH_ASSOC);
@@ -39,11 +39,12 @@ try {
         die("Error: El registro de recaudo con el ID #" . htmlspecialchars($recaudo_id) . " no existe.");
     }
 
-    // 2. Obtener las cuotas asociadas (si aplica el mismo id o lote)
+    // 2. Obtener TODAS las cuotas individuales asociadas a este recibo global (recaudo_id)
     $stmtCuotas = $pdo->prepare("
-        SELECT numero_cuota, monto_cuota AS monto, fecha_vencimiento 
+        SELECT numero_cuota, monto_pagado AS monto, fecha_vencimiento 
         FROM cuotas_contrato 
-        WHERE id = ?
+        WHERE recaudo_id = ?
+        ORDER BY numero_cuota ASC
     ");
     $stmtCuotas->execute([$recaudo_id]);
     $cuotasPagadas = $stmtCuotas->fetchAll(PDO::FETCH_ASSOC);
@@ -61,7 +62,7 @@ try {
     die("Error en la base de datos: " . $e->getMessage());
 }
 
-$totalAbonadoRecaudo = (float)($recaudo['monto_pagado'] ?? 0);
+$totalAbonadoRecaudo = (float)($recaudo['monto_total'] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -154,13 +155,13 @@ $totalAbonadoRecaudo = (float)($recaudo['monto_pagado'] ?? 0);
         <div class="divider"></div>
         <p class="fw-bold">COMPROBANTE DE RECAUDO</p>
         
-        <!-- Número de Recibo -->
+        <!-- Número de Recibo Global -->
         <p><b>Recibo N°:</b> #<?php echo str_pad($recaudo['id'], 6, '0', STR_PAD_LEFT); ?></p>
         
         <!-- Número de Contrato -->
-        <p><b>Contrato N°:</b> #<?php echo htmlspecialchars($recaudo['contrato_id'] ?? 'N/A'); ?></p>
+        <p><b>Contrato N°:</b> #<?php echo htmlspecialchars($recaudo['id_contrato'] ?? 'N/A'); ?></p>
         
-        <p><b>Fecha:</b> <?php echo date('d/m/Y h:i A', strtotime($recaudo['fecha_pago'] ?? 'now')); ?></p>
+        <p><b>Fecha:</b> <?php echo date('d/m/Y h:i A', strtotime($recaudo['fecha'] ?? 'now')); ?></p>
         <?php if (!empty($recaudo['cajero_nombre'])): ?>
             <p><b>Cajero:</b> <?php echo htmlspecialchars($recaudo['cajero_nombre']); ?></p>
         <?php endif; ?>
@@ -220,7 +221,7 @@ $totalAbonadoRecaudo = (float)($recaudo['monto_pagado'] ?? 0);
             </tr>
         <?php endif; ?>
 
-        <div class="divider"></div>
+        <tr><td colspan="2"><div class="divider"></div></td></tr>
 
         <tr style="font-size: 13px; font-weight: bold;">
             <td class="text-start">TOTAL ABONADO:</td>
