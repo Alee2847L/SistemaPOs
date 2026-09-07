@@ -19,7 +19,7 @@ if (!$input) {
 $codigo_bp = $input['codigo_bp'] ?? '';
 $id_contrato = $input['id_contrato'] ?? 0;
 $cuotas = $input['cuotas'] ?? []; // IDs de cuotas_contrato
-$pagos = $input['pagos'] ?? [];
+$pagos = $input['pagos'] ?? []; // Detalle de montos por método de pago (Efectivo / Tarjeta)
 $usuario_id = $_SESSION['usuario_id'];
 
 if (empty($codigo_bp) || empty($id_contrato) || empty($cuotas) || empty($pagos)) {
@@ -30,19 +30,46 @@ if (empty($codigo_bp) || empty($id_contrato) || empty($cuotas) || empty($pagos))
 try {
     $pdo->beginTransaction();
 
-    $total_abonado = 0;
+    // 1. Calcular montos por método de pago recibidos desde el frontend
+    $montoEfectivo = 0;
+    $montoTarjeta = 0;
+
     foreach ($pagos as $p) {
-        $total_abonado += floatval($p['monto']);
+        $metodo = strtoupper(trim($p['metodo'] ?? 'EFECTIVO'));
+        $monto = floatval($p['monto'] ?? 0);
+
+        if ($metodo === 'EFECTIVO') {
+            $montoEfectivo += $monto;
+        } elseif ($metodo === 'TARJETA') {
+            $montoTarjeta += $monto;
+        }
     }
 
-    // 1. Crear el registro maestro del Recibo Global
-    $stmtRecaudo = $pdo->prepare("INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, fecha) VALUES (?, ?, ?, NOW())");
-    $stmtRecaudo->execute([$id_contrato, $usuario_id, $total_abonado]);
+    $total_abonado = $montoEfectivo + $montoTarjeta;
+
+    if ($total_abonado <= 0) {
+        throw new Exception("El monto total del recaudo debe ser mayor a cero.");
+    }
+
+    // Determinar etiqueta general de tipo_pago
+    if ($montoEfectivo > 0 && $montoTarjeta > 0) {
+        $tipoPago = 'AMBOS';
+    } elseif ($montoTarjeta > 0) {
+        $tipoPago = 'TARJETA';
+    } else {
+        $tipoPago = 'EFECTIVO';
+    }
+
+    // 2. Crear el registro maestro del Recibo Global incluyendo los campos de desglose
+    $stmtRecaudo = $pdo->prepare("
+        INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, tipo_pago, monto_efectivo, monto_tarjeta, fecha) 
+        VALUES (?, ?, ?, ?, ?, ?, NOW())
+    ");
+    $stmtRecaudo->execute([$id_contrato, $usuario_id, $total_abonado, $tipoPago, $montoEfectivo, $montoTarjeta]);
     $recaudo_id = $pdo->lastInsertId();
 
-    // 2. Actualizar cada cuota seleccionada consultando su monto real de la base de datos y vinculándola al recaudo_id
+    // 3. Actualizar cada cuota seleccionada consultando su monto real de la base de datos y vinculándola al recaudo_id
     foreach ($cuotas as $c_id) {
-        // Consultar el monto oficial de esta cuota específica
         $stmtMontoCuota = $pdo->prepare("SELECT monto_cuota FROM cuotas_contrato WHERE id = ?");
         $stmtMontoCuota->execute([$c_id]);
         $montoCuotaActual = $stmtMontoCuota->fetchColumn() ?: 0;
@@ -59,11 +86,11 @@ try {
         $stmtUpdateCuota->execute([$montoCuotaActual, $usuario_id, $recaudo_id, $c_id, $id_contrato]);
     }
 
-    // 3. Sumar el total abonado al límite de crédito del cliente
+    // 4. Sumar el total abonado al límite de crédito del cliente
     $stmtUpdateLimite = $pdo->prepare("UPDATE clientes SET limite_credito = limite_credito + ? WHERE codigo_bp = ?");
     $stmtUpdateLimite->execute([$total_abonado, $codigo_bp]);
 
-    // 4. Verificar si el contrato quedó totalmente pagado
+    // 5. Verificar si el contrato quedó totalmente pagado
     $stmtVerificar = $pdo->prepare("SELECT COUNT(*) FROM cuotas_contrato WHERE contrato_id = ? AND estado != 'PAGADO'");
     $stmtVerificar->execute([$id_contrato]);
     if ($stmtVerificar->fetchColumn() == 0) {
@@ -83,3 +110,4 @@ try {
     $pdo->rollBack();
     echo json_encode(['success' => false, 'message' => 'Error en base de datos: ' . $e->getMessage()]);
 }
+?>
