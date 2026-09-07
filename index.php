@@ -148,6 +148,15 @@ $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_r
                         </div>
                     </div>
 
+                    <!-- Historial y Control de Recaudos (Visible para Administrador y Vendedor) -->
+                    <div onclick="abrirModulo('historial_recaudos', 'Historial de Recaudos', 'views/historial_recaudos.php', '📜')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Historial de Recaudos">
+                        <div class="icono-modulo w-12 h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-violet-600 group-hover:text-white">📜</div>
+                        <div class="texto-menu flex-1 lg:w-full overflow-hidden">
+                            <h3 class="font-bold text-slate-900 group-hover:text-violet-600 transition text-sm sm:text-base truncate">Historial Recaudos</h3>
+                            <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Reimpresión y reversiones.</p>
+                        </div>
+                    </div>
+
                     <!-- Módulos Exclusivos para Administradores -->
                     <?php if ($es_admin): ?>
                     <div onclick="abrirModulo('auditoria_inventario', 'Auditoría Inventario', 'views/auditoria_inventario.php', '📋')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Auditoría Inventario">
