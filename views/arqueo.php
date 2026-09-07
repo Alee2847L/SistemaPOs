@@ -25,8 +25,7 @@ try {
     ");
     $ventasHoy = $stmtVentas->fetchAll(PDO::FETCH_ASSOC);
 
-    // 2. Obtener transacciones de recaudo desde transacciones_recaudo de forma segura
-    // Verificamos la relación mediante LEFT JOIN para evitar pantallas en blanco si algún contrato no cuadra
+    // 2. Obtener transacciones de recaudo (sin filtrar por estado_caja en tr, ya que la columna no existe en esa tabla)
     $stmtRecaudos = $pdo->query("
         SELECT tr.id as id, 'RECAUDO' as tipo, 
                COALESCE(c.codigo_bp, 'BP000') as cliente_codigo_bp, 
@@ -41,7 +40,6 @@ try {
         LEFT JOIN contratos co ON tr.contrato_id = co.id
         LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
         LEFT JOIN usuarios u ON tr.usuario_id = u.id
-        WHERE (tr.estado_caja = 'abierta' OR tr.estado_caja IS NULL)
     ");
     $recaudosHoy = $stmtRecaudos->fetchAll(PDO::FETCH_ASSOC);
 
@@ -116,9 +114,8 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
                 json_encode($transaccionesHoy)
             ]);
 
-            // Actualizar estados a 'cerrada'
+            // Actualizar estados a 'cerrada' solo en las ventas (que sí tienen la columna)
             $pdo->query("UPDATE ventas SET estado_caja = 'cerrada' WHERE estado_caja = 'abierta' OR estado_caja IS NULL");
-            $pdo->query("UPDATE transacciones_recaudo SET estado_caja = 'cerrada' WHERE estado_caja = 'abierta' OR estado_caja IS NULL");
 
             $pdo->commit();
             $mensaje = "<div class='mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-medium'>¡Cierre de caja realizado con éxito! Total registrado: L. " . number_format($totalGeneralContado, 2) . "</div>";
