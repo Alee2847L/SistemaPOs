@@ -40,9 +40,12 @@ try {
     $stmtRecaudo->execute([$id_contrato, $usuario_id, $total_abonado]);
     $recaudo_id = $pdo->lastInsertId();
 
-    // 2. Actualizar cada cuota seleccionada vinculándola al recaudo_id global
-    foreach ($cuotas as $index => $c_id) {
-        $montoCuotaActual = $pagos[$index]['monto'] ?? 0;
+    // 2. Actualizar cada cuota seleccionada consultando su monto real de la base de datos y vinculándola al recaudo_id
+    foreach ($cuotas as $c_id) {
+        // Consultar el monto oficial de esta cuota específica
+        $stmtMontoCuota = $pdo->prepare("SELECT monto_cuota FROM cuotas_contrato WHERE id = ?");
+        $stmtMontoCuota->execute([$c_id]);
+        $montoCuotaActual = $stmtMontoCuota->fetchColumn() ?: 0;
 
         $stmtUpdateCuota = $pdo->prepare("
             UPDATE cuotas_contrato 
