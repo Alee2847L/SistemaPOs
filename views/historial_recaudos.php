@@ -38,6 +38,11 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
                 $montoTotal = $datosRecaudo['monto_total'];
                 $codigoBp = $datosRecaudo['codigo_bp'];
                 $contratoId = $datosRecaudo['contrato_id'];
+                
+                // Extraer montos y tipo de pago original para reflejarlos correctamente en caja
+                $tipoPago = $datosRecaudo['tipo_pago'] ?? 'EFECTIVO';
+                $montoEfectivoOrig = (float)($datosRecaudo['monto_efectivo'] ?? 0);
+                $montoTarjetaOrig = (float)($datosRecaudo['monto_tarjeta'] ?? 0);
 
                 // 2. Descontar del límite de crédito del cliente
                 $stmtRestarLimite = $pdo->prepare("UPDATE clientes SET limite_credito = limite_credito - ? WHERE codigo_bp = ?");
@@ -49,13 +54,19 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
                 $idsCuotas = $stmtCuotasAfectadas->fetchAll(PDO::FETCH_COLUMN);
                 $idsCuotasStr = implode(',', $idsCuotas);
 
-                // 4. INSERCIÓN DE AUDITORÍA: Registrar la anulación con monto negativo en transacciones_recaudo 
-                // (Esto alimenta automáticamente tu módulo de caja/arqueo reflejando la salida o devolución de dinero)
+                // 4. INSERCIÓN DE AUDITORÍA: Registrar la anulación con montos negativos (total, efectivo y tarjeta)
                 $stmtAnulacionLog = $pdo->prepare("
-                    INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, fecha) 
-                    VALUES (?, ?, ?, NOW())
+                    INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, tipo_pago, monto_efectivo, monto_tarjeta, fecha) 
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
                 ");
-                $stmtAnulacionLog->execute([$contratoId, $_SESSION['usuario_id'], -$montoTotal]);
+                $stmtAnulacionLog->execute([
+                    $contratoId, 
+                    $_SESSION['usuario_id'], 
+                    -$montoTotal, 
+                    $tipoPago, 
+                    -$montoEfectivoOrig, 
+                    -$montoTarjetaOrig
+                ]);
                 $nuevoAnulacionId = $pdo->lastInsertId();
 
                 // 5. Regresar todas las cuotas asociadas a este recaudo a estado PENDIENTE
@@ -66,10 +77,7 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
                 ");
                 $stmtRevertirCuotas->execute([$recaudo_id_original]);
 
-                // // 6. Eliminar el registro positivo original para mantener el balance contable neto
-                // $stmtEliminarOriginal = $pdo->prepare("DELETE FROM transacciones_recaudo WHERE id = ?");
-                // $stmtEliminarOriginal->execute([$recaudo_id_original]);
-
+                // 6. Confirmar la transacción de forma definitiva en la base de datos[cite: 5]
                 $pdo->commit();
                 
                 // Redirigir a imprimir el comprobante de anulación enviando los IDs de las cuotas afectadas
