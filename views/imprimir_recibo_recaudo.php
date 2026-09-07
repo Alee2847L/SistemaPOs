@@ -23,47 +23,52 @@ if (!$recaudo_id) {
 }
 
 try {
-    // 1. Obtener la cabecera del recaudo y datos del cliente / contrato / cajero
+    // 1. Obtener la cabecera del pago usando la tabla cuotas_contrato y relacionando el contrato y cliente
     $stmtRecaudo = $pdo->prepare("
-        SELECT r.*, c.Nombre AS cliente_nombre, c.rtn_dni, c.codigo_bp, u.nombre AS cajero_nombre
-        FROM recaudos r
-        LEFT JOIN clientes c ON r.codigo_bp = c.codigo_bp
-        LEFT JOIN usuarios u ON r.usuario_id = u.id
-        WHERE r.id_recaudo = ?
+        SELECT cc.*, co.id AS id_contrato, c.Nombre AS cliente_nombre, c.rtn_dni, c.codigo_bp, u.nombre AS cajero_nombre
+        FROM cuotas_contrato cc
+        LEFT JOIN contratos co ON cc.contrato_id = co.id
+        LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
+        LEFT JOIN usuarios u ON cc.usuario_id = u.id
+        WHERE cc.id = ?
     ");
     $stmtRecaudo->execute([$recaudo_id]);
     $recaudo = $stmtRecaudo->fetch(PDO::FETCH_ASSOC);
 
     if (!$recaudo) {
-        die("Error: El recaudo con el ID #" . htmlspecialchars($recaudo_id) . " no existe.");
+        die("Error: El registro de recaudo con el ID #" . htmlspecialchars($recaudo_id) . " no existe.");
     }
 
-    // 2. Obtener las cuotas asociadas a este recaudo
+    // 2. Obtener las cuotas asociadas (si aplica el mismo id o lote)
     $stmtCuotas = $pdo->prepare("
-        SELECT c.numero_cuota, c.monto, c.fecha_vencimiento 
-        FROM cuotas c 
-        WHERE c.id_recaudo_pago = ?
+        SELECT numero_cuota, monto_cuota AS monto, fecha_vencimiento 
+        FROM cuotas_contrato 
+        WHERE id = ?
     ");
     $stmtCuotas->execute([$recaudo_id]);
     $cuotasPagadas = $stmtCuotas->fetchAll(PDO::FETCH_ASSOC);
 
-    // 3. Obtener los detalles de los métodos de pago (Efectivo / Tarjeta)
-    $stmtPagos = $pdo->prepare("SELECT * FROM recaudo_pagos_detalle WHERE id_recaudo = ?");
-    $stmtPagos->execute([$recaudo_id]);
-    $detallesPagos = $stmtPagos->fetchAll(PDO::FETCH_ASSOC);
+    // 3. Obtener los detalles de los métodos de pago (Efectivo / Tarjeta) si existe la tabla
+    $detallesPagos = [];
+    $stmtCheckTabla = $pdo->query("SHOW TABLES LIKE 'recaudo_pagos_detalle'");
+    if ($stmtCheckTabla->rowCount() > 0) {
+        $stmtPagos = $pdo->prepare("SELECT * FROM recaudo_pagos_detalle WHERE id_recaudo = ?");
+        $stmtPagos->execute([$recaudo_id]);
+        $detallesPagos = $stmtPagos->fetchAll(PDO::FETCH_ASSOC);
+    }
 
 } catch (PDOException $e) {
     die("Error en la base de datos: " . $e->getMessage());
 }
 
-$totalAbonadoRecaudo = (float)($recaudo['total_pagado'] ?? $recaudo['monto_total'] ?? 0);
+$totalAbonadoRecaudo = (float)($recaudo['monto_pagado'] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comprobante Recaudo #<?php echo str_pad($recaudo['id_recaudo'], 6, '0', STR_PAD_LEFT); ?></title>
+    <title>Comprobante Recaudo #<?php echo str_pad($recaudo['id'], 6, '0', STR_PAD_LEFT); ?></title>
     <style>
         * {
             box-sizing: border-box;
@@ -150,12 +155,12 @@ $totalAbonadoRecaudo = (float)($recaudo['total_pagado'] ?? $recaudo['monto_total
         <p class="fw-bold">COMPROBANTE DE RECAUDO</p>
         
         <!-- Número de Recibo -->
-        <p><b>Recibo N°:</b> #<?php echo str_pad($recaudo['id_recaudo'], 6, '0', STR_PAD_LEFT); ?></p>
+        <p><b>Recibo N°:</b> #<?php echo str_pad($recaudo['id'], 6, '0', STR_PAD_LEFT); ?></p>
         
         <!-- Número de Contrato -->
-        <p><b>Contrato N°:</b> #<?php echo htmlspecialchars($recaudo['id_contrato'] ?? 'N/A'); ?></p>
+        <p><b>Contrato N°:</b> #<?php echo htmlspecialchars($recaudo['contrato_id'] ?? 'N/A'); ?></p>
         
-        <p><b>Fecha:</b> <?php echo date('d/m/Y h:i A', strtotime($recaudo['fecha'] ?? $recaudo['created_at'] ?? 'now')); ?></p>
+        <p><b>Fecha:</b> <?php echo date('d/m/Y h:i A', strtotime($recaudo['fecha_pago'] ?? 'now')); ?></p>
         <?php if (!empty($recaudo['cajero_nombre'])): ?>
             <p><b>Cajero:</b> <?php echo htmlspecialchars($recaudo['cajero_nombre']); ?></p>
         <?php endif; ?>
@@ -210,7 +215,7 @@ $totalAbonadoRecaudo = (float)($recaudo['total_pagado'] ?? $recaudo['monto_total
             <?php endforeach; ?>
         <?php else: ?>
             <tr>
-                <td class="text-start">Pago Registrado:</td>
+                <td class="text-start">Efectivo / Pago Registrado:</td>
                 <td class="text-end">L. <?php echo number_format($totalAbonadoRecaudo, 2); ?></td>
             </tr>
         <?php endif; ?>
