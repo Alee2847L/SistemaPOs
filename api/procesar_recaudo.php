@@ -35,43 +35,35 @@ try {
         $total_abonado += floatval($p['monto']);
     }
 
-    // ID de respaldo o registro de cabecera si existe la tabla transacciones_recaudo
-    $recaudo_id = rand(1000, 9999);
-    if ($pdo->query("SHOW TABLES LIKE 'transacciones_recaudo'")->rowCount() > 0) {
-        $stmtRecaudo = $pdo->prepare("INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, fecha) VALUES (?, ?, ?, NOW())");
-        $stmtRecaudo->execute([$id_contrato, $usuario_id, $total_abonado]);
-        $recaudo_id = $pdo->lastInsertId();
+    // 1. Crear el registro maestro del Recibo Global
+    $stmtRecaudo = $pdo->prepare("INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, fecha) VALUES (?, ?, ?, NOW())");
+    $stmtRecaudo->execute([$id_contrato, $usuario_id, $total_abonado]);
+    $recaudo_id = $pdo->lastInsertId();
+
+    // 2. Actualizar cada cuota seleccionada vinculándola al recaudo_id global
+    foreach ($cuotas as $index => $c_id) {
+        $montoCuotaActual = $pagos[$index]['monto'] ?? 0;
+
+        $stmtUpdateCuota = $pdo->prepare("
+            UPDATE cuotas_contrato 
+            SET estado = 'PAGADO', 
+                monto_pagado = ?, 
+                fecha_pago = NOW(), 
+                usuario_id = ?,
+                recaudo_id = ?
+            WHERE id = ? AND contrato_id = ?
+        ");
+        $stmtUpdateCuota->execute([$montoCuotaActual, $usuario_id, $recaudo_id, $c_id, $id_contrato]);
     }
 
-    // Actualizamos las cuotas en cuotas_contrato guardando también el usuario_id que realizó el cobro
-    $placeholders = implode(',', array_fill(0, count($cuotas), '?'));
-    
-    $sqlCuotas = "UPDATE cuotas_contrato 
-                  SET estado = 'PAGADO', 
-                      monto_pagado = monto_cuota, 
-                      fecha_pago = NOW(), 
-                      usuario_id = ? 
-                  WHERE id IN ($placeholders) AND contrato_id = ?";
-    
-    $params = [$usuario_id];
-    foreach ($cuotas as $c_id) {
-        $params[] = $c_id;
-    }
-    $params[] = $id_contrato;
-
-    $stmtUpdateCuotas = $pdo->prepare($sqlCuotas);
-    $stmtUpdateCuotas->execute($params);
-
-    // NUEVO: Sumar el total abonado al límite de crédito del cliente usando codigo_bp
+    // 3. Sumar el total abonado al límite de crédito del cliente
     $stmtUpdateLimite = $pdo->prepare("UPDATE clientes SET limite_credito = limite_credito + ? WHERE codigo_bp = ?");
     $stmtUpdateLimite->execute([$total_abonado, $codigo_bp]);
 
-    // Verificar si quedan cuotas pendientes en cuotas_contrato para finalizar el contrato
+    // 4. Verificar si el contrato quedó totalmente pagado
     $stmtVerificar = $pdo->prepare("SELECT COUNT(*) FROM cuotas_contrato WHERE contrato_id = ? AND estado != 'PAGADO'");
     $stmtVerificar->execute([$id_contrato]);
-    $cuotasPendientesRestantes = $stmtVerificar->fetchColumn();
-
-    if ($cuotasPendientesRestantes == 0) {
+    if ($stmtVerificar->fetchColumn() == 0) {
         $stmtFinalizarContrato = $pdo->prepare("UPDATE contratos SET estado = 'FINALIZADO' WHERE id = ?");
         $stmtFinalizarContrato->execute([$id_contrato]);
     }
@@ -80,7 +72,7 @@ try {
 
     echo json_encode([
         'success' => true, 
-        'message' => 'Recaudo procesado con éxito y límite de crédito actualizado',
+        'message' => 'Recaudo procesado con éxito',
         'recaudo_id' => $recaudo_id
     ]);
 

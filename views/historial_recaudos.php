@@ -3,45 +3,63 @@
 session_start();
 require_once '../config/conexion.php';
 
-// Habilitar errores para diagnóstico
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-date_default_timezone_set('America/Tegucigalpa');
-
 if (!isset($_SESSION['usuario_id'])) {
     header("Location: login.php");
     exit();
 }
 
-// Validar rol para saber si es administrador o vendedor
 $rolActual = strtolower($_SESSION['usuario_rol'] ?? 'vendedor');
 $esAdmin = ($rolActual === 'admin' || $rolActual === 'administrador');
 
 $mensaje = "";
 $tipo_alerta = "";
 
-// Lógica para anular / revertir un recaudo si se solicita (SOLO ADMIN)
+// Lógica para anular / revertir un recaudo global (SOLO ADMIN)
 if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id'])) {
     if (!$esAdmin) {
         $mensaje = "Acceso denegado: Solo los administradores pueden anular recaudos.";
         $tipo_alerta = "danger";
     } else {
-        $id_cuota_recaudo = $_GET['id'];
+        $recaudo_id = $_GET['id'];
         try {
             $pdo->beginTransaction();
 
-            // Revertir el registro en cuotas_contrato (poner estado pendiente y limpiar pago)
-            $stmtRevertir = $pdo->prepare("
-                UPDATE cuotas_contrato 
-                SET monto_pagado = 0, fecha_pago = NULL, estado = 'PENDIENTE', usuario_id = NULL 
-                WHERE id = ?
+            // 1. Obtener el monto total del recaudo para descontarlo del límite de crédito del cliente
+            $stmtGetRecaudo = $pdo->prepare("
+                SELECT tr.*, co.codigo_bp 
+                FROM transacciones_recaudo tr 
+                JOIN contratos co ON tr.contrato_id = co.id 
+                WHERE tr.id = ?
             ");
-            $stmtRevertir->execute([$id_cuota_recaudo]);
+            $stmtGetRecaudo->execute([$recaudo_id]);
+            $datosRecaudo = $stmtGetRecaudo->fetch(PDO::FETCH_ASSOC);
 
-            $pdo->commit();
-            $mensaje = "El recaudo #{$id_cuota_recaudo} ha sido anulado y la cuota regresó a estado PENDIENTE.";
-            $tipo_alerta = "success";
+            if ($datosRecaudo) {
+                $montoTotal = $datosRecaudo['monto_total'];
+                $codigoBp = $datosRecaudo['codigo_bp'];
+
+                // 2. Descontar del límite de crédito del cliente
+                $stmtRestarLimite = $pdo->prepare("UPDATE clientes SET limite_credito = limite_credito - ? WHERE codigo_bp = ?");
+                $stmtRestarLimite->execute([$montoTotal, $codigoBp]);
+
+                // 3. Regresar todas las cuotas asociadas a este recaudo a estado PENDIENTE
+                $stmtRevertirCuotas = $pdo->prepare("
+                    UPDATE cuotas_contrato 
+                    SET monto_pagado = 0, fecha_pago = NULL, estado = 'PENDIENTE', usuario_id = NULL, recaudo_id = NULL 
+                    WHERE recaudo_id = ?
+                ");
+                $stmtRevertirCuotas->execute([$recaudo_id]);
+
+                // 4. Eliminar o marcar como anulado el registro de la transacción de recaudo
+                $stmtEliminarRecaudo = $pdo->prepare("DELETE FROM transacciones_recaudo WHERE id = ?");
+                $stmtEliminarRecaudo->execute([$recaudo_id]);
+
+                $pdo->commit();
+                $mensaje = "El recibo #{$recaudo_id} ha sido anulado correctamente.";
+                $tipo_alerta = "success";
+            } else {
+                throw new Exception("Recibo no encontrado.");
+            }
         } catch (Exception $e) {
             $pdo->rollBack();
             $mensaje = "Error al anular el recaudo: " . $e->getMessage();
@@ -50,40 +68,40 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
     }
 }
 
-// Capturar parámetros de filtro enviados por GET
+// Filtros
 $busqueda = trim($_GET['buscar'] ?? '');
 $fechaInicio = $_GET['fecha_inicio'] ?? '';
 $fechaFin = $_GET['fecha_fin'] ?? '';
 
-// Construir consulta SQL dinámica con filtros
+// Consulta basada en la tabla maestra transacciones_recaudo
 $sql = "
-    SELECT cc.*, co.id AS contrato_id, c.Nombre AS cliente_nombre, c.rtn_dni, c.codigo_bp, u.nombre AS cajero_nombre
-    FROM cuotas_contrato cc
-    LEFT JOIN contratos co ON cc.contrato_id = co.id
+    SELECT tr.*, co.id AS contrato_id, c.Nombre AS cliente_nombre, c.codigo_bp, u.nombre AS cajero_nombre
+    FROM transacciones_recaudo tr
+    JOIN contratos co ON tr.contrato_id = co.id
     LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
-    LEFT JOIN usuarios u ON cc.usuario_id = u.id
-    WHERE (cc.estado = 'PAGADO' OR cc.monto_pagado > 0)
+    LEFT JOIN usuarios u ON tr.usuario_id = u.id
+    WHERE 1=1
 ";
 $params = [];
 
 if (!empty($busqueda)) {
-    $sql .= " AND (cc.id LIKE ? OR c.Nombre LIKE ? OR c.codigo_bp LIKE ?)";
+    $sql .= " AND (tr.id LIKE ? OR c.Nombre LIKE ? OR c.codigo_bp LIKE ?)";
     $params[] = "%$busqueda%";
     $params[] = "%$busqueda%";
     $params[] = "%$busqueda%";
 }
 
 if (!empty($fechaInicio)) {
-    $sql .= " AND DATE(cc.fecha_pago) >= ?";
+    $sql .= " AND DATE(tr.fecha) >= ?";
     $params[] = $fechaInicio;
 }
 
 if (!empty($fechaFin)) {
-    $sql .= " AND DATE(cc.fecha_pago) <= ?";
+    $sql .= " AND DATE(tr.fecha) <= ?";
     $params[] = $fechaFin;
 }
 
-$sql .= " ORDER BY cc.fecha_pago DESC";
+$sql .= " ORDER BY tr.fecha DESC";
 
 try {
     $stmtHistorial = $pdo->prepare($sql);
@@ -98,28 +116,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Historial de Recaudos - INVERSIONES J.A</title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#f8fafc',
-                            100: '#f1f5f9',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                        }
-                    },
-                    boxShadow: {
-                        'xs': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-                    }
-                }
-            }
-        }
-    </script>
-    <!-- Google Fonts & FontAwesome Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -132,16 +129,15 @@ try {
         }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-blue-500 selection:text-white p-4 sm:p-8">
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col p-4 sm:p-8">
 
     <div class="max-w-[1300px] w-full mx-auto flex-grow flex flex-col">
-        <!-- Cabecera del Módulo -->
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div>
                 <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
                     <i class="fa-solid fa-clock-rotate-left text-blue-600"></i> Historial de Recaudos
                 </h2>
-                <p class="text-slate-500 text-xs sm:text-sm mt-0.5">Consulta, reimpresión y control de pagos y abonos aplicados.</p>
+                <p class="text-slate-500 text-xs sm:text-sm mt-0.5">Control y reimpresión de recibos de pago aplicados.</p>
             </div>
             <div class="flex items-center gap-2 no-print">
                 <?php if ($esAdmin): ?>
@@ -149,7 +145,6 @@ try {
                     <i class="fa-solid fa-print text-xs"></i> Imprimir Reporte
                 </button>
                 <?php endif; ?>
-                <!-- Botón Actualizar que limpia los filtros -->
                 <a href="historial_recaudos.php" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-medium text-xs sm:text-sm px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 no-underline">
                     <i class="fa-solid fa-sync text-xs"></i> Actualizar
                 </a>
@@ -162,7 +157,7 @@ try {
             </div>
         <?php endif; ?>
 
-        <!-- FILTROS AVANZADOS (BÚSQUEDA Y FECHAS) -->
+        <!-- FILTROS -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-6 no-print">
             <form method="GET" action="historial_recaudos.php" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
                 <div class="lg:col-span-5">
@@ -190,19 +185,18 @@ try {
             </form>
         </div>
 
-        <!-- TABLA PRINCIPAL DE RECAUDOS -->
+        <!-- TABLA -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-grow">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <th class="px-6 py-3.5">Recibo ID</th>
+                            <th class="px-6 py-3.5">Nº Recibo</th>
                             <th class="px-6 py-3.5">Contrato</th>
                             <th class="px-6 py-3.5">Cliente</th>
-                            <th class="px-6 py-3.5">Cuota N°</th>
-                            <th class="px-6 py-3.5">Fecha Pago</th>
+                            <th class="px-6 py-3.5">Fecha y Hora</th>
                             <th class="px-6 py-3.5">Cajero</th>
-                            <th class="px-6 py-3.5 text-end">Monto Pagado</th>
+                            <th class="px-6 py-3.5 text-end">Monto Total</th>
                             <th class="px-6 py-3.5 text-center no-print">Acciones</th>
                         </tr>
                     </thead>
@@ -223,27 +217,24 @@ try {
                                 <div class="font-medium text-slate-900"><?php echo htmlspecialchars($row['cliente_nombre'] ?? 'N/A'); ?></div>
                                 <span class="inline-block bg-slate-100 text-slate-600 text-[11px] font-semibold px-2 py-0.5 rounded-md mt-0.5">BP: <?php echo htmlspecialchars($row['codigo_bp'] ?? ''); ?></span>
                             </td>
-                            <td class="px-6 py-4 text-slate-700">
-                                N° <?php echo htmlspecialchars($row['numero_cuota']); ?>
-                            </td>
                             <td class="px-6 py-4 text-slate-600 text-xs sm:text-sm">
-                                <?php echo date('d/m/Y h:i A', strtotime($row['fecha_pago'] ?? 'now')); ?>
+                                <?php echo date('d/m/Y h:i A', strtotime($row['fecha'])); ?>
                             </td>
                             <td class="px-6 py-4 text-slate-700 font-medium flex items-center gap-1.5 mt-3">
                                 <i class="fa-solid fa-user text-slate-400 text-xs"></i> 
                                 <?php echo htmlspecialchars($row['cajero_nombre'] ?? 'Sistema'); ?>
                             </td>
                             <td class="px-6 py-4 text-end font-bold text-emerald-600">
-                                L. <?php echo number_format((float)$row['monto_pagado'], 2); ?>
+                                L. <?php echo number_format((float)$row['monto_total'], 2); ?>
                             </td>
                             <td class="px-6 py-4 text-center no-print">
                                 <div class="flex items-center justify-center gap-1.5">
-                                    <!-- Botón para reimprimir recibo (Disponible para Administrador y Vendedor) -->
+                                    <!-- Reimpresión (Disponible para Admin y Vendedor) -->
                                     <a href="imprimir_recibo_recaudo.php?id=<?php echo $row['id']; ?>" target="_blank" class="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Imprimir Recibo">
                                         <i class="fa-solid fa-print text-xs"></i> Recibo
                                     </a>
                                     
-                                    <!-- Botón para anular / devolver pago (EXCLUSIVO ADMINISTRADOR) -->
+                                    <!-- Anulación (EXCLUSIVO ADMINISTRADOR) -->
                                     <?php if ($esAdmin): ?>
                                     <a href="javascript:void(0);" onclick="confirmarAnulacion(<?php echo $row['id']; ?>)" class="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Anular / Revertir Pago">
                                         <i class="fa-solid fa-rotate-left text-xs"></i> Anular
@@ -256,7 +247,7 @@ try {
                         if (!$hayResultados):
                         ?>
                         <tr>
-                            <td colspan="8" class="px-6 py-8 text-center text-slate-400">
+                            <td colspan="7" class="px-6 py-8 text-center text-slate-400">
                                 No se encontraron registros de recaudos con los filtros seleccionados.
                             </td>
                         </tr>
@@ -269,7 +260,7 @@ try {
 
     <script>
         function confirmarAnulacion(id) {
-            if (confirm("⚠️ ADVERTENCIA: ¿Estás seguro de anular este recaudo (ID #" + id + ")?\n\nEsta acción regresará la cuota a estado PENDIENTE y dejará el monto pagado en 0.")) {
+            if (confirm("⚠️ ADVERTENCIA: ¿Estás seguro de anular el recibo global #" + id + "?\n\nEsto regresará todas las cuotas pagadas de este recibo a estado PENDIENTE y ajustará el límite de crédito del cliente.")) {
                 window.location.href = "historial_recaudos.php?accion=anular&id=" + id;
             }
         }
