@@ -20,43 +20,55 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
         $mensaje = "Acceso denegado: Solo los administradores pueden anular recaudos.";
         $tipo_alerta = "danger";
     } else {
-        $recaudo_id = $_GET['id'];
+        $recaudo_id_original = $_GET['id'];
         try {
             $pdo->beginTransaction();
 
-            // 1. Obtener el monto total del recaudo para descontarlo del límite de crédito del cliente
+            // 1. Obtener los datos del recaudo original
             $stmtGetRecaudo = $pdo->prepare("
                 SELECT tr.*, co.codigo_bp 
                 FROM transacciones_recaudo tr 
                 JOIN contratos co ON tr.contrato_id = co.id 
                 WHERE tr.id = ?
             ");
-            $stmtGetRecaudo->execute([$recaudo_id]);
+            $stmtGetRecaudo->execute([$recaudo_id_original]);
             $datosRecaudo = $stmtGetRecaudo->fetch(PDO::FETCH_ASSOC);
 
             if ($datosRecaudo) {
                 $montoTotal = $datosRecaudo['monto_total'];
                 $codigoBp = $datosRecaudo['codigo_bp'];
+                $contratoId = $datosRecaudo['contrato_id'];
 
                 // 2. Descontar del límite de crédito del cliente
                 $stmtRestarLimite = $pdo->prepare("UPDATE clientes SET limite_credito = limite_credito - ? WHERE codigo_bp = ?");
                 $stmtRestarLimite->execute([$montoTotal, $codigoBp]);
 
-                // 3. Regresar todas las cuotas asociadas a este recaudo a estado PENDIENTE
+                // 3. INSERCIÓN DE AUDITORÍA: Registrar la anulación con monto negativo en transacciones_recaudo
+                $stmtAnulacionLog = $pdo->prepare("
+                    INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, fecha) 
+                    VALUES (?, ?, ?, NOW())
+                ");
+                $stmtAnulacionLog->execute([$contratoId, $_SESSION['usuario_id'], -$montoTotal]);
+                $nuevoAnulacionId = $pdo->lastInsertId();
+
+                // 4. Regresar todas las cuotas asociadas a este recaudo a estado PENDIENTE y quitarles el recaudo_id original
                 $stmtRevertirCuotas = $pdo->prepare("
                     UPDATE cuotas_contrato 
                     SET monto_pagado = 0, fecha_pago = NULL, estado = 'PENDIENTE', usuario_id = NULL, recaudo_id = NULL 
                     WHERE recaudo_id = ?
                 ");
-                $stmtRevertirCuotas->execute([$recaudo_id]);
+                $stmtRevertirCuotas->execute([$recaudo_id_original]);
 
-                // 4. Eliminar o marcar como anulado el registro de la transacción de recaudo
-                $stmtEliminarRecaudo = $pdo->prepare("DELETE FROM transacciones_recaudo WHERE id = ?");
-                $stmtEliminarRecaudo->execute([$recaudo_id]);
+                // 5. Eliminar el registro positivo original para mantener el balance contable de auditoría con el negativo
+                $stmtEliminarOriginal = $pdo->prepare("DELETE FROM transacciones_recaudo WHERE id = ?");
+                $stmtEliminarOriginal->execute([$recaudo_id_original]);
 
                 $pdo->commit();
-                $mensaje = "El recibo #{$recaudo_id} ha sido anulado correctamente.";
-                $tipo_alerta = "success";
+                
+                // Redirigir directamente a imprimir el comprobante de anulación generado
+                echo "<script>window.open('imprimir_comprobante_anulacion.php?id={$nuevoAnulacionId}&original={$recaudo_id_original}', '_blank'); window.location.href='historial_recaudos.php';</script>";
+                exit();
+
             } else {
                 throw new Exception("Recibo no encontrado.");
             }
@@ -137,7 +149,7 @@ try {
                 <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
                     <i class="fa-solid fa-clock-rotate-left text-blue-600"></i> Historial de Recaudos
                 </h2>
-                <p class="text-slate-500 text-xs sm:text-sm mt-0.5">Control y reimpresión de recibos de pago aplicados.</p>
+                <p class="text-slate-500 text-xs sm:text-sm mt-0.5">Control, auditoría y reimpresión de recibos de pago.</p>
             </div>
             <div class="flex items-center gap-2 no-print">
                 <?php if ($esAdmin): ?>
@@ -191,12 +203,12 @@ try {
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <th class="px-6 py-3.5">Nº Recibo</th>
+                            <th class="px-6 py-3.5">Nº Registro</th>
                             <th class="px-6 py-3.5">Contrato</th>
                             <th class="px-6 py-3.5">Cliente</th>
                             <th class="px-6 py-3.5">Fecha y Hora</th>
-                            <th class="px-6 py-3.5">Cajero</th>
-                            <th class="px-6 py-3.5 text-end">Monto Total</th>
+                            <th class="px-6 py-3.5">Cajero / Usuario</th>
+                            <th class="px-6 py-3.5 text-end">Monto</th>
                             <th class="px-6 py-3.5 text-center no-print">Acciones</th>
                         </tr>
                     </thead>
@@ -205,10 +217,15 @@ try {
                         $hayResultados = false;
                         while($row = $stmtHistorial->fetch(PDO::FETCH_ASSOC)): 
                             $hayResultados = true;
+                            $montoVal = (float)$row['monto_total'];
+                            $esNegativo = $montoVal < 0;
                         ?>
-                        <tr class="hover:bg-slate-50/50 transition border-b border-slate-100 last:border-none">
+                        <tr class="hover:bg-slate-50/50 transition border-b border-slate-100 last:border-none <?php echo $esNegativo ? 'bg-rose-50/30' : ''; ?>">
                             <td class="px-6 py-4 font-bold text-slate-900">
                                 #<?php echo str_pad($row['id'], 6, '0', STR_PAD_LEFT); ?>
+                                <?php if ($esNegativo): ?>
+                                    <span class="block text-[10px] text-rose-600 font-semibold uppercase">Anulación / Ajuste</span>
+                                <?php endif; ?>
                             </td>
                             <td class="px-6 py-4 font-medium text-slate-700">
                                 #<?php echo htmlspecialchars($row['contrato_id']); ?>
@@ -224,21 +241,25 @@ try {
                                 <i class="fa-solid fa-user text-slate-400 text-xs"></i> 
                                 <?php echo htmlspecialchars($row['cajero_nombre'] ?? 'Sistema'); ?>
                             </td>
-                            <td class="px-6 py-4 text-end font-bold text-emerald-600">
-                                L. <?php echo number_format((float)$row['monto_total'], 2); ?>
+                            <td class="px-6 py-4 text-end font-bold <?php echo $esNegativo ? 'text-rose-600' : 'text-emerald-600'; ?>">
+                                <?php echo ($esNegativo ? '- L. ' . number_format(abs($montoVal), 2) : 'L. ' . number_format($montoVal, 2)); ?>
                             </td>
                             <td class="px-6 py-4 text-center no-print">
                                 <div class="flex items-center justify-center gap-1.5">
-                                    <!-- Reimpresión (Disponible para Admin y Vendedor) -->
-                                    <a href="imprimir_recibo_recaudo.php?id=<?php echo $row['id']; ?>" target="_blank" class="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Imprimir Recibo">
-                                        <i class="fa-solid fa-print text-xs"></i> Recibo
-                                    </a>
-                                    
-                                    <!-- Anulación (EXCLUSIVO ADMINISTRADOR) -->
-                                    <?php if ($esAdmin): ?>
-                                    <a href="javascript:void(0);" onclick="confirmarAnulacion(<?php echo $row['id']; ?>)" class="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Anular / Revertir Pago">
-                                        <i class="fa-solid fa-rotate-left text-xs"></i> Anular
-                                    </a>
+                                    <?php if (!$esNegativo): ?>
+                                        <!-- Reimpresión de Recibo (Disponible para Admin y Vendedor) -->
+                                        <a href="imprimir_recibo_recaudo.php?id=<?php echo $row['id']; ?>" target="_blank" class="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Imprimir Recibo">
+                                            <i class="fa-solid fa-print text-xs"></i> Recibo
+                                        </a>
+                                        
+                                        <!-- Anulación (EXCLUSIVO ADMINISTRADOR) -->
+                                        <?php if ($esAdmin): ?>
+                                        <a href="javascript:void(0);" onclick="confirmarAnulacion(<?php echo $row['id']; ?>)" class="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Anular / Revertir Pago">
+                                            <i class="fa-solid fa-rotate-left text-xs"></i> Anular
+                                        </a>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="text-xs text-slate-400 italic">Registro de Auditoría</span>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -260,7 +281,7 @@ try {
 
     <script>
         function confirmarAnulacion(id) {
-            if (confirm("⚠️ ADVERTENCIA: ¿Estás seguro de anular el recibo global #" + id + "?\n\nEsto regresará todas las cuotas pagadas de este recibo a estado PENDIENTE y ajustará el límite de crédito del cliente.")) {
+            if (confirm("⚠️ ADVERTENCIA DE AUDITORÍA:\n\n¿Estás seguro de anular el recibo global #" + id + "?\n\nEsto regresará las cuotas a estado PENDIENTE, ajustará el límite de crédito del cliente e insertará un registro negativo contable.")) {
                 window.location.href = "historial_recaudos.php?accion=anular&id=" + id;
             }
         }
