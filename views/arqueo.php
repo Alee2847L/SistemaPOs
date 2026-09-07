@@ -25,15 +25,15 @@ try {
     ");
     $ventasHoy = $stmtVentas->fetchAll(PDO::FETCH_ASSOC);
 
-    // 2. Obtener transacciones de recaudo pendientes del turno abierto
+    // 2. Obtener transacciones de recaudo pendientes del turno abierto (con desglose real de efectivo y tarjeta)
     $stmtRecaudos = $pdo->query("
         SELECT tr.id as id, 'RECAUDO' as tipo, 
                COALESCE(c.codigo_bp, 'BP000') as cliente_codigo_bp, 
                tr.monto_total as total, 
-               tr.monto_total as monto_efectivo, 
-               0 as monto_tarjeta, 
+               tr.monto_efectivo as monto_efectivo, 
+               tr.monto_tarjeta as monto_tarjeta, 
                tr.fecha as fecha, 
-               'EFECTIVO' as metodo_pago, 
+               tr.tipo_pago as metodo_pago, 
                0 as cambio_entregado, 
                COALESCE(u.nombre, 'Sistema') as cajero
         FROM transacciones_recaudo tr
