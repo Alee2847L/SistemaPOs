@@ -231,7 +231,7 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 
     </main>
 
-    <!-- Script con las rutas corregidas a /api/recaudo.php -->
+    <!-- Script de lógica de recaudo -->
     <script>
         let clienteSeleccionadoActual = null;
         let contratoSeleccionadoActual = null;
@@ -301,14 +301,13 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
             renderizarPagosRecaudo();
         }
 
-        // --- CARGAR CONTRATOS ACTIVOS (Apunta a /api/recaudo.php) ---
+        // --- CARGAR CONTRATOS ACTIVOS ---
         function cargarContratosCliente(codigoBp) {
             fetch(`/api/recaudo.php?accion=listar_contratos&codigo_bp=${encodeURIComponent(codigoBp)}`)
             .then(res => res.json())
             .then(res => {
                 const tbody = document.getElementById('tablaContratosCliente');
                 
-                // Validación estricta para filtrar solo contratos activos tanto en API como en cliente
                 const contratosActivos = res.success && Array.isArray(res.data) 
                     ? res.data.filter(c => (c.estado || '').toLowerCase() === 'activo') 
                     : [];
@@ -344,7 +343,7 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
             });
         }
 
-        // --- CARGAR CUOTAS (Apunta a /api/recaudo.php) ---
+        // --- CARGAR CUOTAS ---
         function seleccionarContrato(idContrato) {
             contratoSeleccionadoActual = idContrato;
             document.getElementById('lbl_nro_contrato').innerText = idContrato;
@@ -496,7 +495,7 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
             }
         }
 
-        // --- PROCESAR PAGO AL BACKEND ---
+        // --- PROCESAR PAGO AL BACKEND Y ABRIR COMPROBANTE ---
         function procesarPagoRecaudo() {
             if (!clienteSeleccionadoActual || !contratoSeleccionadoActual) {
                 alert('Seleccione un cliente y un contrato.');
@@ -542,11 +541,20 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('✅ Recaudo procesado e integrado al arqueo de caja con éxito.');
-                    window.open(`imprimir_recibo_recaudo.php?id=${data.recaudo_id}`, '_blank', 'width=400,height=600');
+                    // 1. Extraemos de forma segura el ID del recaudo devuelto por la API
+                    const idRecaudoGenerado = data.recaudo_id || data.id || data.id_recaudo;
+
+                    if (idRecaudoGenerado) {
+                        // 2. Abrimos la vista de impresión en una ventana emergente compacta (estilo ticket)
+                        window.open(`imprimir_recibo_recaudo.php?id=${idRecaudoGenerado}`, '_blank', 'width=320,height=600');
+                    } else {
+                        alert('✅ Recaudo procesado, pero no se detectó el ID para la impresión automática.');
+                    }
+
+                    // 3. Recargamos la página actual para limpiar los campos
                     location.reload();
                 } else {
-                    alert('❌ Error: ' + data.message);
+                    alert('❌ Error: ' + (data.message || 'No se pudo procesar el recaudo.'));
                 }
             })
             .catch(err => {
