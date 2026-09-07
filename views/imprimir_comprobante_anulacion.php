@@ -15,18 +15,17 @@ $anulacion_id = $_GET['id'] ?? null;
 $original_id = $_GET['original'] ?? 'N/A';
 $cuotasParam = $_GET['cuotas'] ?? '';
 $contratoParam = $_GET['contrato'] ?? null;
-$fechaParam = $_GET['fecha'] ?? null;
 
 if (!$anulacion_id) {
     die("Error: ID de anulación no proporcionado.");
 }
 
 try {
-    // 1. Obtener los datos del registro de anulación negativo
+    // 1. Obtener los datos del registro de anulación negativo (Usando LEFT JOIN para evitar fallos si el contrato varía)
     $stmtAnulacion = $pdo->prepare("
         SELECT tr.*, co.id AS id_contrato, c.Nombre AS cliente_nombre, c.rtn_dni, c.codigo_bp, u.nombre AS cajero_nombre
         FROM transacciones_recaudo tr
-        JOIN contratos co ON tr.contrato_id = co.id
+        LEFT JOIN contratos co ON tr.contrato_id = co.id
         LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
         LEFT JOIN usuarios u ON tr.usuario_id = u.id
         WHERE tr.id = ?
@@ -35,60 +34,43 @@ try {
     $anulacion = $stmtAnulacion->fetch(PDO::FETCH_ASSOC);
 
     if (!is_array($anulacion)) {
-        die("Error: Registro de anulación no encontrado.");
+        die("Error: Registro de anulación no encontrado (ID: " . htmlspecialchars($anulacion_id) . ").");
     }
 
     if (!$contratoParam) {
-        $contratoParam = $anulacion['id_contrato'];
+        $contratoParam = $anulacion['id_contrato'] ?? null;
     }
 
     // 2. Obtener el detalle de las cuotas devueltas
     $cuotasDevueltas = [];
     
     if (!empty($cuotasParam)) {
-        // Si vienen los IDs explícitos por URL
         $idsArray = array_map('intval', explode(',', $cuotasParam));
-        $placeholders = implode(',', array_fill(0, count($idsArray), '?'));
-        
-        $stmtCuotas = $pdo->prepare("
-            SELECT numero_cuota, monto_cuota AS monto, fecha_vencimiento 
-            FROM cuotas_contrato 
-            WHERE id IN ($placeholders)
-            ORDER BY numero_cuota ASC
-        ");
-        $stmtCuotas->execute($idsArray);
-        $cuotasDevueltas = $stmtCuotas->fetchAll(PDO::FETCH_ASSOC);
-    } else {
-        // Búsqueda inteligente secundaria: Si se imprime días después desde el historial, 
-        // buscamos cuotas de ese contrato que estén pendientes pero cuyo monto acumulado o fecha 
-        // coincidan, o mostramos todas las cuotas recientes que fueron liberadas en el rango de ese minuto.
-        // Como alternativa segura para contratos pequeños, traemos las cuotas que recientemente pasaron a PENDIENTE 
-        // o las últimas cuotas asociadas a este contrato que matcheen el monto total.
+        if (!empty($idsArray) && $idsArray[0] > 0) {
+            $placeholders = implode(',', array_fill(0, count($idsArray), '?'));
+            $stmtCuotas = $pdo->prepare("
+                SELECT numero_cuota, monto_cuota AS monto, fecha_vencimiento 
+                FROM cuotas_contrato 
+                WHERE id IN ($placeholders)
+                ORDER BY numero_cuota ASC
+            ");
+            $stmtCuotas->execute($idsArray);
+            $cuotasDevueltas = $stmtCuotas->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } 
+    
+    // Fallback si no vinieron cuotas por URL pero tenemos contrato
+    if (empty($cuotasDevueltas) && $contratoParam) {
         $montoBuscado = abs((float)$anulacion['monto_total']);
-        
-        // Intentamos buscar cuotas del contrato que tengan un monto cercano o simplemente listamos 
-        // las cuotas que correspondan al total de la anulación
         $stmtCuotasAprox = $pdo->prepare("
             SELECT numero_cuota, monto_cuota AS monto, fecha_vencimiento 
             FROM cuotas_contrato 
-            WHERE contrato_id = ? AND estado = 'PENDIENTE'
-            ORDER BY fecha_vencimiento ASC
+            WHERE contrato_id = ? 
+            ORDER BY fecha_vencimiento DESC
+            LIMIT 5
         ");
         $stmtCuotasAprox->execute([$contratoParam]);
-        $todasPendientes = $stmtCuotasAprox->fetchAll(PDO::FETCH_ASSOC);
-
-        // Seleccionamos las cuotas cuya suma se aproxime o coincida con el monto total devuelto
-        $sumaAcumulada = 0;
-        foreach ($todasPendientes as $cuota) {
-            if ($sumaAcumulada < $montoBuscado) {
-                $cuotasDevueltas[] = $cuota;
-                $sumaAcumulada += (float)$cuota['monto'];
-            }
-        }
-        // Si por alguna razón la suma exacta no cuadra exactamente por decimales, aseguramos mostrar al menos las pendientes lógicas
-        if (empty($cuotasDevueltas) && !empty($todasPendientes)) {
-            $cuotasDevueltas = [$todasPendientes[0]];
-        }
+        $cuotasDevueltas = $stmtCuotasAprox->fetchAll(PDO::FETCH_ASSOC);
     }
 
 } catch (PDOException $e) {
@@ -218,14 +200,14 @@ $montoRevertido = abs((float)($anulacion['monto_total'] ?? 0));
             <?php if (!empty($cuotasDevueltas)): ?>
                 <?php foreach ($cuotasDevueltas as $cuota): ?>
                 <tr>
-                    <td class="text-start">N° <?php echo htmlspecialchars($cuota['numero_cuota']); ?></td>
-                    <td class="text-start"><?php echo htmlspecialchars($cuota['fecha_vencimiento']); ?></td>
-                    <td class="text-end">- L. <?php echo number_format((float)$cuota['monto'], 2); ?></td>
+                    <td class="text-start">N° <?php echo htmlspecialchars($cuota['numero_cuota'] ?? 'N/A'); ?></td>
+                    <td class="text-start"><?php echo htmlspecialchars($cuota['fecha_vencimiento'] ?? '-'); ?></td>
+                    <td class="text-end" style="color: red;">- L. <?php echo number_format((float)($cuota['monto'] ?? 0), 2); ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="3" class="text-center">Reversión general de contrato</td>
+                    <td colspan="3" class="text-center">Reversión aplicada al contrato</td>
                 </tr>
             <?php endif; ?>
         </tbody>
