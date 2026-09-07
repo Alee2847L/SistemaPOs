@@ -220,7 +220,7 @@ try {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 text-sm">
-                        <?> 
+                        <?php 
                         $hayResultados = false;
                         while($row = $stmtHistorial->fetch(PDO::FETCH_ASSOC)): 
                             $hayResultados = true;
@@ -274,7 +274,7 @@ try {
                                 </div>
                             </td>
                         </tr>
-                        <?> endwhile; 
+                        <?php endwhile; 
                         if (!$hayResultados):
                         ?>
                         <tr>
