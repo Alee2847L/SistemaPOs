@@ -220,7 +220,7 @@ try {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 text-sm">
-                        <?php 
+                        <?> 
                         $hayResultados = false;
                         while($row = $stmtHistorial->fetch(PDO::FETCH_ASSOC)): 
                             $hayResultados = true;
@@ -254,7 +254,7 @@ try {
                             <td class="px-6 py-4 text-center no-print">
                                 <div class="flex items-center justify-center gap-1.5">
                                     <?php if (!$esNegativo): ?>
-                                        <!-- Reimpresión de Recibo -->
+                                        <!-- Reimpresión de Recibo Normal -->
                                         <a href="imprimir_recibo_recaudo.php?id=<?php echo $row['id']; ?>" target="_blank" class="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Imprimir Recibo">
                                             <i class="fa-solid fa-print text-xs"></i> Recibo
                                         </a>
@@ -266,12 +266,15 @@ try {
                                         </a>
                                         <?php endif; ?>
                                     <?php else: ?>
-                                        <span class="text-xs text-slate-400 italic">Registro de Auditoría</span>
+                                        <!-- Reimpresión de Comprobante de Anulación -->
+                                        <a href="imprimir_comprobante_anulacion.php?id=<?php echo $row['id']; ?>" target="_blank" class="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Imprimir Comprobante de Anulación">
+                                            <i class="fa-solid fa-print text-xs"></i> Ver Anulación
+                                        </a>
                                     <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
-                        <?php endwhile; 
+                        <?> endwhile; 
                         if (!$hayResultados):
                         ?>
                         <tr>
