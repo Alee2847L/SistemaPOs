@@ -12,25 +12,42 @@ $mensaje = "";
 $mostrarModalDiferencia = false;
 $datosDiferencia = [];
 
-// 1. Obtener ventas abiertas del POS
-$stmtVentas = $pdo->query("
-    SELECT v.id_transaccion as id, 'VENTA' as tipo, v.cliente_codigo_bp, v.total, v.monto_efectivo, v.monto_tarjeta, v.fecha_venta as fecha, v.metodo_pago, v.cambio_entregado, u.nombre as cajero
-    FROM ventas v
-    JOIN usuarios u ON v.usuario_id = u.id
-    WHERE v.estado_caja = 'abierta' OR v.estado_caja IS NULL
-");
-$ventasHoy = $stmtVentas->fetchAll(PDO::FETCH_ASSOC);
+$ventasHoy = [];
+$recaudosHoy = [];
 
-// 2. Obtener transacciones de recaudo (incluye pagos positivos y anulaciones/devoluciones negativas) pendientes de cierre
-$stmtRecaudos = $pdo->query("
-    SELECT tr.id as id, 'RECAUDO' as tipo, c.codigo_bp as cliente_codigo_bp, tr.monto_total as total, tr.monto_total as monto_efectivo, 0 as monto_tarjeta, tr.fecha as fecha, 'EFECTIVO' as metodo_pago, 0 as cambio_entregado, u.nombre as cajero
-    FROM transacciones_recaudo tr
-    JOIN contratos co ON tr.contrato_id = co.id
-    LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
-    LEFT JOIN usuarios u ON tr.usuario_id = u.id
-    WHERE (tr.estado_caja = 'abierta' OR tr.estado_caja IS NULL)
-");
-$recaudosHoy = $stmtRecaudos->fetchAll(PDO::FETCH_ASSOC);
+try {
+    // 1. Obtener ventas abiertas del POS
+    $stmtVentas = $pdo->query("
+        SELECT v.id_transaccion as id, 'VENTA' as tipo, v.cliente_codigo_bp, v.total, v.monto_efectivo, v.monto_tarjeta, v.fecha_venta as fecha, v.metodo_pago, v.cambio_entregado, u.nombre as cajero
+        FROM ventas v
+        JOIN usuarios u ON v.usuario_id = u.id
+        WHERE v.estado_caja = 'abierta' OR v.estado_caja IS NULL
+    ");
+    $ventasHoy = $stmtVentas->fetchAll(PDO::FETCH_ASSOC);
+
+    // 2. Obtener transacciones de recaudo desde transacciones_recaudo de forma segura
+    // Verificamos la relación mediante LEFT JOIN para evitar pantallas en blanco si algún contrato no cuadra
+    $stmtRecaudos = $pdo->query("
+        SELECT tr.id as id, 'RECAUDO' as tipo, 
+               COALESCE(c.codigo_bp, 'BP000') as cliente_codigo_bp, 
+               tr.monto_total as total, 
+               tr.monto_total as monto_efectivo, 
+               0 as monto_tarjeta, 
+               tr.fecha as fecha, 
+               'EFECTIVO' as metodo_pago, 
+               0 as cambio_entregado, 
+               COALESCE(u.nombre, 'Sistema') as cajero
+        FROM transacciones_recaudo tr
+        LEFT JOIN contratos co ON tr.contrato_id = co.id
+        LEFT JOIN clientes c ON co.codigo_bp = c.codigo_bp
+        LEFT JOIN usuarios u ON tr.usuario_id = u.id
+        WHERE (tr.estado_caja = 'abierta' OR tr.estado_caja IS NULL)
+    ");
+    $recaudosHoy = $stmtRecaudos->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (Exception $e) {
+    $mensaje = "<div class='mb-4 p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs sm:text-sm font-medium'>Error en consulta SQL: " . $e->getMessage() . "</div>";
+}
 
 // Unificar ambos arreglos en una sola lista para el arqueo
 $transaccionesHoy = array_merge($ventasHoy, $recaudosHoy);
@@ -48,7 +65,6 @@ foreach ($transaccionesHoy as $t) {
 // 3. PROCESAR CIERRE DE CAJA
 if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['accion'] === 'forzar_cierre')) {
     try {
-        // Recoger denominaciones de efectivo
         $denominaciones = [
             1   => intval($_POST['billete_1'] ?? 0),
             2   => intval($_POST['billete_2'] ?? 0),
@@ -70,7 +86,6 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
         $totalTarjetaContado = floatval($_POST['monto_tarjetas'] ?? 0);
         $totalGeneralContado = $totalEfectivoContado + $totalTarjetaContado;
 
-        // Validar diferencias independientes por método de pago usando los montos reales
         $difEfectivo = $totalEfectivoContado - $totalEfectivoSistema;
         $difTarjeta = $totalTarjetaContado - $totalTarjetaSistema;
 
@@ -86,7 +101,6 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
                 'post_data'        => $_POST 
             ];
         } else {
-            // Ejecutar cierre en base de datos
             $pdo->beginTransaction();
 
             $cantidadTransacciones = count($transaccionesHoy);
@@ -109,7 +123,6 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
             $pdo->commit();
             $mensaje = "<div class='mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-medium'>¡Cierre de caja realizado con éxito! Total registrado: L. " . number_format($totalGeneralContado, 2) . "</div>";
             
-            // Refrescar transacciones abiertas
             $transaccionesHoy = [];
             $granTotalSistema = 0;
             $totalEfectivoSistema = 0;
@@ -122,11 +135,9 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
     }
 }
 
-// Listado para la tabla visual
 $transacciones = $transaccionesHoy;
 $totalVentasDia = $granTotalSistema;
 
-// Consultar historial de cierres anteriores
 $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierres_caja c JOIN usuarios u ON c.usuario_id = u.id ORDER BY c.fecha_cierre DESC");
 ?>
 <!DOCTYPE html>
@@ -451,7 +462,7 @@ $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierr
                                 </button>
                             </td>
                         </tr>
-                        <?php endforeach; ?>
+                        <?php endwhile; ?>
                     </tbody>
                 </table>
             </div>
