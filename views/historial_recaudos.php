@@ -43,7 +43,14 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
                 $stmtRestarLimite = $pdo->prepare("UPDATE clientes SET limite_credito = limite_credito - ? WHERE codigo_bp = ?");
                 $stmtRestarLimite->execute([$montoTotal, $codigoBp]);
 
-                // 3. INSERCIÓN DE AUDITORÍA: Registrar la anulación con monto negativo en transacciones_recaudo
+                // 3. Obtener las cuotas asociadas ANTES de desvincularlas, para pasarlas por URL al comprobante detallado
+                $stmtCuotasAfectadas = $pdo->prepare("SELECT id FROM cuotas_contrato WHERE recaudo_id = ?");
+                $stmtCuotasAfectadas->execute([$recaudo_id_original]);
+                $idsCuotas = $stmtCuotasAfectadas->fetchAll(PDO::FETCH_COLUMN);
+                $idsCuotasStr = implode(',', $idsCuotas);
+
+                // 4. INSERCIÓN DE AUDITORÍA: Registrar la anulación con monto negativo en transacciones_recaudo 
+                // (Esto alimenta automáticamente tu módulo de caja/arqueo reflejando la salida o devolución de dinero)
                 $stmtAnulacionLog = $pdo->prepare("
                     INSERT INTO transacciones_recaudo (contrato_id, usuario_id, monto_total, fecha) 
                     VALUES (?, ?, ?, NOW())
@@ -51,7 +58,7 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
                 $stmtAnulacionLog->execute([$contratoId, $_SESSION['usuario_id'], -$montoTotal]);
                 $nuevoAnulacionId = $pdo->lastInsertId();
 
-                // 4. Regresar todas las cuotas asociadas a este recaudo a estado PENDIENTE y quitarles el recaudo_id original
+                // 5. Regresar todas las cuotas asociadas a este recaudo a estado PENDIENTE
                 $stmtRevertirCuotas = $pdo->prepare("
                     UPDATE cuotas_contrato 
                     SET monto_pagado = 0, fecha_pago = NULL, estado = 'PENDIENTE', usuario_id = NULL, recaudo_id = NULL 
@@ -59,14 +66,14 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'anular' && isset($_GET['id']))
                 ");
                 $stmtRevertirCuotas->execute([$recaudo_id_original]);
 
-                // 5. Eliminar el registro positivo original para mantener el balance contable de auditoría con el negativo
+                // 6. Eliminar el registro positivo original para mantener el balance contable neto
                 $stmtEliminarOriginal = $pdo->prepare("DELETE FROM transacciones_recaudo WHERE id = ?");
                 $stmtEliminarOriginal->execute([$recaudo_id_original]);
 
                 $pdo->commit();
                 
-                // Redirigir directamente a imprimir el comprobante de anulación generado
-                echo "<script>window.open('imprimir_comprobante_anulacion.php?id={$nuevoAnulacionId}&original={$recaudo_id_original}', '_blank'); window.location.href='historial_recaudos.php';</script>";
+                // Redirigir a imprimir el comprobante de anulación enviando los IDs de las cuotas afectadas
+                echo "<script>window.open('imprimir_comprobante_anulacion.php?id={$nuevoAnulacionId}&original={$recaudo_id_original}&cuotas={$idsCuotasStr}', '_blank'); window.location.href='historial_recaudos.php';</script>";
                 exit();
 
             } else {
@@ -224,7 +231,7 @@ try {
                             <td class="px-6 py-4 font-bold text-slate-900">
                                 #<?php echo str_pad($row['id'], 6, '0', STR_PAD_LEFT); ?>
                                 <?php if ($esNegativo): ?>
-                                    <span class="block text-[10px] text-rose-600 font-semibold uppercase">Anulación / Ajuste</span>
+                                    <span class="block text-[10px] text-rose-600 font-semibold uppercase">Anulación / Salida Caja</span>
                                 <?php endif; ?>
                             </td>
                             <td class="px-6 py-4 font-medium text-slate-700">
@@ -247,7 +254,7 @@ try {
                             <td class="px-6 py-4 text-center no-print">
                                 <div class="flex items-center justify-center gap-1.5">
                                     <?php if (!$esNegativo): ?>
-                                        <!-- Reimpresión de Recibo (Disponible para Admin y Vendedor) -->
+                                        <!-- Reimpresión de Recibo -->
                                         <a href="imprimir_recibo_recaudo.php?id=<?php echo $row['id']; ?>" target="_blank" class="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs px-3 py-2 rounded-xl transition shadow-xs" title="Imprimir Recibo">
                                             <i class="fa-solid fa-print text-xs"></i> Recibo
                                         </a>
@@ -281,7 +288,7 @@ try {
 
     <script>
         function confirmarAnulacion(id) {
-            if (confirm("⚠️ ADVERTENCIA DE AUDITORÍA:\n\n¿Estás seguro de anular el recibo global #" + id + "?\n\nEsto regresará las cuotas a estado PENDIENTE, ajustará el límite de crédito del cliente e insertará un registro negativo contable.")) {
+            if (confirm("⚠️ ADVERTENCIA DE AUDITORÍA Y CAJA:\n\n¿Estás seguro de anular el recibo global #" + id + "?\n\nEsto regresará las cuotas a estado PENDIENTE, restará la devolución en el arqueo de caja, ajustará el crédito del cliente y generará el comprobante con el detalle de las cuotas devueltas.")) {
                 window.location.href = "historial_recaudos.php?accion=anular&id=" + id;
             }
         }
