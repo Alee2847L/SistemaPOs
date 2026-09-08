@@ -119,7 +119,11 @@ if ($accion === 'solicitar_recuperacion') {
         $stmtUpdate = $pdo->prepare("UPDATE usuarios SET token_recuperacion = ?, token_expiracion = ? WHERE id = ?");
         $stmtUpdate->execute([$token, $expiracion, $user['id']]);
 
-        $enlace = "http://bryanmayorga.great-site.net/views/reset-password.php?token=" . $token;
+        // Detectar automáticamente el protocolo y el dominio actual del servidor
+        $protocolo = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
+        $host = $_SERVER['HTTP_HOST'];
+        $enlace = "$protocolo://$host/views/reset-password.php?token=" . $token;
+
 
         // --- CONFIGURACIÓN DE PHPMailer CON MICROSOFT 365 SMTP (USANDO .ENV) ---
         require '../phpmailer/Exception.php';
