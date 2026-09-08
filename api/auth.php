@@ -8,6 +8,17 @@ require_once '../config/conexion.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// --- CARGAR EL ARCHIVO .ENV DESDE FUERA DE LA CARPETA PÚBLICA ---
+$envPath = __DIR__ . '/../../.env';
+if (file_exists($envPath)) {
+    $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) continue;
+        list($name, $value) = explode('=', $line, 2);
+        $_ENV[trim($name)] = trim($value);
+    }
+}
+
 $accion = $_POST['accion'] ?? '';
 
 // --- 1. INICIAR SESIÓN ---
@@ -136,8 +147,11 @@ if ($accion === 'solicitar_recuperacion') {
 
             $mail->send();
         } catch (Exception $e) {
-            // Para depurar (luego puedes registrarlo en un log o archivo)
-            echo json_encode(['success' => false, 'message' => 'Error al enviar correo: ' . $mail->ErrorInfo]);
+            // Si ocurre un error enviando el correo, lo devolvemos para depurar
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Error al enviar correo: ' . $mail->ErrorInfo
+            ]);
             exit;
         }
     }
