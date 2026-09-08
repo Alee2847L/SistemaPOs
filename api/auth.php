@@ -136,7 +136,9 @@ if ($accion === 'solicitar_recuperacion') {
 
             $mail->send();
         } catch (Exception $e) {
-            // Opcional: registrar error -> $mail->ErrorInfo
+            // Para depurar (luego puedes registrarlo en un log o archivo)
+            echo json_encode(['success' => false, 'message' => 'Error al enviar correo: ' . $mail->ErrorInfo]);
+            exit;
         }
     }
 
