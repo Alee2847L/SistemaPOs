@@ -56,7 +56,7 @@ try {
             <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-sm"><i class="fa-solid fa-users text-sm"></i></div>
             <div>
                 <span class="font-bold text-sm sm:text-base text-slate-900 block leading-none">Módulo de Clientes y Créditos</span>
-                <span class="text-[11px] text-slate-400 font-medium">INVERSIONES J.A</span>
+                <span class="text-[11px] text-slate-400 font-medium"><?php echo $nombre_empresa; ?></span>
             </div>
         </div>
     </header>
