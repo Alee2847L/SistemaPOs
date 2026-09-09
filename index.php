@@ -20,13 +20,27 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
+
+// --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
+$nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
+try {
+    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
+    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($row_config['nombre_empresa'])) {
+            $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+        }
+    }
+} catch (Exception $e) {
+    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Punto de Venta — INVERSIONES J.A</title>
+    <title>Punto de Venta — <?php echo $nombre_empresa; ?></title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -74,7 +88,7 @@ $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_r
                 <i class="fa-solid fa-cash-register text-base"></i>
             </div>
             <div>
-                <span class="font-bold text-sm sm:text-base tracking-tight text-slate-900 block leading-none">INVERSIONES J.A</span>
+                <span class="font-bold text-sm sm:text-base tracking-tight text-slate-900 block leading-none"><?php echo $nombre_empresa; ?></span>
                 <span class="text-[11px] text-slate-400 font-medium">Sistema de Gestión Comercial</span>
             </div>
         </div>
@@ -232,7 +246,7 @@ $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_r
 
     <!-- Footer Minimalista -->
     <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 mt-auto">
-        <p>&copy; 2026 INVERSIONES J.A. Todos los derechos reservados.</p>
+        <p>&copy; <?php echo date('Y'); ?> <?php echo $nombre_empresa; ?>. Todos los derechos reservados.</p>
     </footer>
 
     <script>
