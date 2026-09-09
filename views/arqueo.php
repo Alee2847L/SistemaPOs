@@ -341,7 +341,7 @@ try {
                 </div>
                 <div>
                     <span class="font-bold text-sm sm:text-base tracking-tight text-slate-900 block leading-none">Módulo de Arqueo y Cierre de Caja</span>
-                    <span class="text-[11px] text-slate-400 font-medium">INVERSIONES J.A</span>
+                    <span class="text-[11px] text-slate-400 font-medium"><?php echo $nombre_empresa; ?></span>
                 </div>
             </div>
         </div>

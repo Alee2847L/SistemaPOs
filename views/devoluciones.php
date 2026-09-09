@@ -88,7 +88,7 @@ try {
             </div>
             <div>
                 <span class="font-bold text-sm sm:text-base text-slate-900 block leading-none">Módulo de Devoluciones</span>
-                <span class="text-[11px] text-slate-400 font-medium">INVERSIONES J.A</span>
+                <span class="text-[11px] text-slate-400 font-medium"><?php echo $nombre_empresa; ?></span>
             </div>
         </div>
         <a href="arqueo.php" class="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1">
