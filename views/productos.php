@@ -9,13 +9,27 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
+
+// --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
+$nombre_empresa = "INVERSIONES J."; // Valor por defecto
+try {
+    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
+    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($row_config['nombre_empresa'])) {
+            $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+        }
+    }
+} catch (Exception $e) {
+    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Productos — INVERSIONES J.A</title>
+    <title>Gestión de Productos — <?php echo $nombre_empresa; ?></title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -68,7 +82,7 @@ $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_r
                 </div>
                 <div>
                     <span class="font-bold text-sm sm:text-base tracking-tight text-slate-900 block leading-none">Módulo de Productos</span>
-                    <span class="text-[11px] text-slate-400 font-medium">INVERSIONES J.A</span>
+                    <span class="text-[11px] text-slate-400 font-medium"><?php echo $nombre_empresa; ?></span>
                 </div>
             </div>
         </div>

@@ -9,13 +9,27 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
+
+// --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
+$nombre_empresa = "INVERSIONES J."; // Valor por defecto
+try {
+    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
+    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($row_config['nombre_empresa'])) {
+            $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+        }
+    }
+} catch (Exception $e) {
+    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Punto de Venta (POS) - INVERSIONES J.A</title>
+    <title>Punto de Venta (POS) - <?php echo $nombre_empresa; ?></title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -49,7 +63,7 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
     <!-- Navegación Superior -->
     <nav class="bg-white border-b border-slate-200 px-6 py-3.5 flex justify-between items-center no-print">
         <div class="flex items-center gap-2 font-bold text-slate-900 text-sm sm:text-base">
-            <i class="fa-solid fa-cash-register text-blue-600"></i> Punto de Venta (POS) - INVERSIONES J.A
+            <i class="fa-solid fa-cash-register text-blue-600"></i> Punto de Venta (POS) - <?php echo $nombre_empresa; ?>
         </div>
     </nav>
 
