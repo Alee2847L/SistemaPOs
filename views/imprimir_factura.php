@@ -61,6 +61,20 @@ $isv15 = $totalVenta - $subtotalSinISV;
 $ahorroTotal = (float)($venta['ahorro_total'] ?? 0);
 $montoAbonado = (float)($venta['monto_abonado'] ?? 0);
 $cambioEntregado = (float)($venta['cambio_entregado'] ?? 0);
+
+// --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
+$nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
+try {
+    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
+    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($row_config['nombre_empresa'])) {
+            $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+        }
+    }
+} catch (Exception $e) {
+    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -147,7 +161,7 @@ $cambioEntregado = (float)($venta['cambio_entregado'] ?? 0);
     </div>
 
     <div class="header text-center">
-        <h3>INVERSIONES J.A</h3>
+        <h3><?php echo $nombre_empresa; ?></h3>
         <p>Venta de Productos y Servicios</p>
         <p>Honduras</p>
         <div class="divider"></div>
