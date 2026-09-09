@@ -58,7 +58,7 @@ try {
 
 } catch (PDOException $e) {
     http_response_code(500);
-    die(json_encode(['error' => 'Error crítico de conexión: ' . $e->getMessage()]));
+    die("Error crítico de conexión: " . $e->getMessage());
 }
 
 // Función helper para verificar roles (se mantiene intacta para tu sistema)
