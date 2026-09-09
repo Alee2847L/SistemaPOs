@@ -138,13 +138,28 @@ $transacciones = $transaccionesHoy;
 $totalVentasDia = $granTotalSistema;
 
 $historialCierres = $pdo->query("SELECT c.*, u.nombre as admin_cierra FROM cierres_caja c JOIN usuarios u ON c.usuario_id = u.id ORDER BY c.fecha_cierre DESC");
+
+// --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
+$nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
+try {
+    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
+    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($row_config['nombre_empresa'])) {
+            $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+        }
+    }
+} catch (Exception $e) {
+    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arqueo y Cierre de Caja — INVERSIONES J.A</title>
+    <title>Arqueo y Cierre de Caja — <?php echo $nombre_empresa; ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
