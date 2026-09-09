@@ -11,7 +11,7 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
 // --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
-$nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
+$nombre_empresa = "INVERSIONES J."; // Valor por defecto
 try {
     // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
     $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
