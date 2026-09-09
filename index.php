@@ -246,8 +246,8 @@ try {
 
     <!-- Footer Minimalista -->
     <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 mt-auto">
-        <p>&copy; <?php echo date('Y'); ?> <?php echo $nombre_empresa; ?>. Todos los derechos reservados.</p>
-    </footer>
+        <p>&copy; 2026 INVERSIONES J.A. Todos los derechos reservados.</p>
+     </footer>
 
     <script>
         // --- LÓGICA DE INACTIVIDAD (Cliente) ---
