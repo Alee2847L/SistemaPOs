@@ -78,6 +78,20 @@ try {
 }
 
 $montoRevertido = abs((float)($anulacion['monto_total'] ?? 0));
+
+// --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
+$nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
+try {
+    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
+    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($row_config['nombre_empresa'])) {
+            $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+        }
+    }
+} catch (Exception $e) {
+    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -163,7 +177,7 @@ $montoRevertido = abs((float)($anulacion['monto_total'] ?? 0));
     </div>
 
     <div class="header text-center">
-        <h3>INVERSIONES J.A</h3>
+        <h3><?php echo $nombre_empresa; ?></h3>
         <p>Módulo de Auditoría y Control</p>
         <div class="divider"></div>
         <p class="fw-bold" style="font-size: 13px;">COMPROBANTE DE ANULACIÓN</p>
