@@ -61,8 +61,23 @@ try {
     <style>
         @media print {
             .no-print { display: none !important; }
-            body { background: white !important; color: black !important; }
-            .page-break { page-break-before: always; }
+            body { 
+                background: white !important; 
+                color: black !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+            }
+            .max-w-4xl { 
+                max-width: 100% !important; 
+                width: 100% !important; 
+                margin: 0 !important; 
+                padding: 10px !important; 
+                box-shadow: none !important;
+                border: 1px solid #94a3b8 !important;
+            }
+            .page-break { 
+                page-break-before: always; 
+            }
         }
     </style>
 </head>
