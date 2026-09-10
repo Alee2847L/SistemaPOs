@@ -139,14 +139,14 @@ if ($accion === 'eliminar') {
     exit;
 }
 
-// --- 5. LISTAR PROVEEDORES ---
+// --- 5. LISTAR PROVEEDORES (Para el selector de la orden de compra) ---
 if ($accion === 'listar_proveedores') {
     try {
         $stmt = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
         $proveedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['success' => true, 'data' => $proveedores]);
     } catch (PDOException $e) {
-        echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error al listar proveedores: ' . $e->getMessage()]);
     }
     exit;
 }
