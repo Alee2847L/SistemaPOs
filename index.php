@@ -24,7 +24,6 @@ $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_r
 // --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
 $nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
 try {
-    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
     $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
@@ -126,6 +125,15 @@ try {
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
                             <h3 class="font-bold text-slate-900 group-hover:text-emerald-600 transition text-sm sm:text-base truncate">Punto de Venta</h3>
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Realizar nuevas ventas.</p>
+                        </div>
+                    </div>
+
+                    <!-- NUEVO MÓDULO DE COTIZACIONES Y ÓRDENES -->
+                    <div onclick="abrirModulo('cotizaciones', 'Cotizaciones y Órdenes', 'views/cotizaciones.php', '📝')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Cotizaciones y Órdenes">
+                        <div class="icono-modulo w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-blue-600 group-hover:text-white">📝</div>
+                        <div class="texto-menu flex-1 lg:w-full overflow-hidden">
+                            <h3 class="font-bold text-slate-900 group-hover:text-blue-600 transition text-sm sm:text-base truncate">Cotizaciones y Órdenes</h3>
+                            <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Proyectos y compras a proveedores.</p>
                         </div>
                     </div>
 
