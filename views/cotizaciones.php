@@ -288,7 +288,11 @@ try {
                     <td class="py-3 px-4"><span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${c.estado}</span></td>
                     <td class="py-3 px-4 text-center">
                         <div class="flex justify-center gap-1">
-                            <button type="button" class="bg-blue-50 text-blue-700 text-xs px-2.5 py-1.5 rounded-lg font-medium cursor-pointer hover:bg-blue-100 transition" onclick="verCotizacion(${c.id})" title="Ver / Editar"><i class="fa-solid fa-eye"></i></button>
+                            <!-- AQUÍ ES DONDE SE AGREGA EL BOTÓN DE PDF / IMPRESIÓN -->
+                            <a href="ver_cotizacion.php?id=${c.id}" target="_blank" class="bg-blue-50 text-blue-700 text-xs px-2.5 py-1.5 rounded-lg font-medium cursor-pointer hover:bg-blue-100 transition" title="Ver Documento e Imprimir"><i class="fa-solid fa-file-pdf"></i></a>
+                            
+                            <button type="button" class="bg-slate-50 text-slate-700 text-xs px-2.5 py-1.5 rounded-lg font-medium cursor-pointer hover:bg-slate-100 transition" onclick="verCotizacion(${c.id})" title="Editar"><i class="fa-solid fa-eye"></i></button>
+                            
                             ${esAdmin ? `<button type="button" class="bg-rose-50 text-rose-700 text-xs px-2.5 py-1.5 rounded-lg font-medium cursor-pointer hover:bg-rose-100 transition" onclick="eliminarCotizacion(${c.id})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>` : ''}
                         </div>
                     </td>
