@@ -112,6 +112,30 @@ try {
                 <form id="formCotizacion" class="space-y-6">
                     <input type="hidden" id="cot_id" value="">
 
+                    <!-- SELECTOR DE CLASIFICACIÓN CON RADIO BUTTONS -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Seleccione el Tipo de Cotización:</label>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                <input type="radio" name="clasificacion_radio" value="Construcción" class="text-blue-600" checked onchange="actualizarClasificacion(this.value)">
+                                <span class="ml-2 text-xs font-bold text-slate-700">Construcción</span>
+                            </label>
+                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                <input type="radio" name="clasificacion_radio" value="Electricidad" class="text-blue-600" onchange="actualizarClasificacion(this.value)">
+                                <span class="ml-2 text-xs font-bold text-slate-700">Electricidad</span>
+                            </label>
+                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                <input type="radio" name="clasificacion_radio" value="PVC" class="text-blue-600" onchange="actualizarClasificacion(this.value)">
+                                <span class="ml-2 text-xs font-bold text-slate-700">PVC</span>
+                            </label>
+                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                <input type="radio" name="clasificacion_radio" value="Acabados" class="text-blue-600" onchange="actualizarClasificacion(this.value)">
+                                <span class="ml-2 text-xs font-bold text-slate-700">Acabados</span>
+                            </label>
+                        </div>
+                        <input type="hidden" id="cot_clasificacion" value="Construcción">
+                    </div>
+
                     <!-- Datos Generales -->
                     <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                         <div>
@@ -133,18 +157,14 @@ try {
                             <label class="block font-semibold text-xs text-slate-600 mb-1">Nombre del Proyecto:</label>
                             <input type="text" id="cot_proyecto_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="Ej. Cielo Falso PVC / Eléctrica" required>
                         </div>
-                        <div>
-                            <label class="block font-semibold text-xs text-slate-600 mb-1">Clasificación:</label>
-                            <input type="text" id="cot_clasificacion" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="Ej. Obra Blanca">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
+                        <div class="grid grid-cols-2 gap-2 sm:col-span-2">
                             <div>
-                                <label class="block font-semibold text-xs text-slate-600 mb-1">Ancho (M2):</label>
-                                <input type="number" step="0.01" id="cot_ancho" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" value="0">
+                                <label class="block font-semibold text-xs text-slate-600 mb-1">Ancho (M):</label>
+                                <input type="number" step="0.01" id="cot_ancho" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" value="0" oninput="recalcularPorArea()">
                             </div>
                             <div>
-                                <label class="block font-semibold text-xs text-slate-600 mb-1">Long. (M2):</label>
-                                <input type="number" step="0.01" id="cot_longitud" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" value="0">
+                                <label class="block font-semibold text-xs text-slate-600 mb-1">Longitud (M):</label>
+                                <input type="number" step="0.01" id="cot_longitud" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" value="0" oninput="recalcularPorArea()">
                             </div>
                         </div>
                     </div>
@@ -255,7 +275,6 @@ try {
         function cargarProveedores() {
             return fetch('../api/cotizaciones.php?accion=listar_proveedores')
                 .then(res => {
-                    // Validar si la respuesta es texto plano o HTML con error en vez de JSON
                     const contentType = res.headers.get("content-type");
                     if (contentType && contentType.indexOf("application/json") !== -1) {
                         return res.json();
@@ -272,9 +291,10 @@ try {
                 })
                 .catch(err => {
                     console.warn('Aviso al cargar proveedores:', err);
-                    proveedoresGlobal = []; // Evita que se caiga la promesa
+                    proveedoresGlobal = [];
                 });
         }
+
         function renderizarTablaCotizaciones(cotizaciones) {
             let html = cotizaciones.length === 0 ? '<tr><td colspan="8" class="text-center py-6 text-slate-400">No hay cotizaciones registradas</td></tr>' : '';
             cotizaciones.forEach(c => {
@@ -288,11 +308,8 @@ try {
                     <td class="py-3 px-4"><span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${c.estado}</span></td>
                     <td class="py-3 px-4 text-center">
                         <div class="flex justify-center gap-1">
-                            <!-- AQUÍ ES DONDE SE AGREGA EL BOTÓN DE PDF / IMPRESIÓN -->
                             <a href="ver_cotizacion.php?id=${c.id}" target="_blank" class="bg-blue-50 text-blue-700 text-xs px-2.5 py-1.5 rounded-lg font-medium cursor-pointer hover:bg-blue-100 transition" title="Ver Documento e Imprimir"><i class="fa-solid fa-file-pdf"></i></a>
-                            
                             <button type="button" class="bg-slate-50 text-slate-700 text-xs px-2.5 py-1.5 rounded-lg font-medium cursor-pointer hover:bg-slate-100 transition" onclick="verCotizacion(${c.id})" title="Editar"><i class="fa-solid fa-eye"></i></button>
-                            
                             ${esAdmin ? `<button type="button" class="bg-rose-50 text-rose-700 text-xs px-2.5 py-1.5 rounded-lg font-medium cursor-pointer hover:bg-rose-100 transition" onclick="eliminarCotizacion(${c.id})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>` : ''}
                         </div>
                     </td>
@@ -301,15 +318,67 @@ try {
             document.getElementById('tablaCotizaciones').innerHTML = html;
         }
 
+        function actualizarClasificacion(valor) {
+            document.getElementById('cot_clasificacion').value = valor;
+            recalcularPorArea();
+        }
+
         async function abrirModalNuevaCotizacion() {
             await cargarProveedores();
             document.getElementById('modalTitulo').innerText = 'Nueva Cotización de Proyecto';
             document.getElementById('cot_id').value = '';
             document.getElementById('formCotizacion').reset();
             document.getElementById('cot_fecha').valueAsDate = new Date();
+            document.querySelector('input[name="clasificacion_radio"][value="Construcción"]').checked = true;
+            document.getElementById('cot_clasificacion').value = 'Construcción';
             document.getElementById('tablaDetalles').innerHTML = '';
-            agregarFilaDetalle('MATERIAL');
+            
+            // Cargar materiales por defecto para Construcción con área 0
+            recalcularPorArea();
             document.getElementById('modalCotizacion').style.display = 'flex';
+        }
+
+        // Lógica de dosificación automática basada en el tipo y M2
+        function recalcularPorArea() {
+            const tipo = document.getElementById('cot_clasificacion').value;
+            const ancho = parseFloat(document.getElementById('cot_ancho').value) || 0;
+            const longitud = parseFloat(document.getElementById('cot_longitud').value) || 0;
+            const areaM2 = ancho * longitud;
+
+            const tbody = document.getElementById('tablaDetalles');
+            
+            // Si el usuario ya personalizó filas o es nueva, cargamos las plantillas base por M2
+            if (tbody.children.length === 0 || areaM2 > 0) {
+                tbody.innerHTML = ''; // Limpiar para actualizar dosificación
+                
+                if (tipo === 'Construcción') {
+                    let cantCemento = areaM2 > 0 ? (areaM2 * 0.5).toFixed(2) : 10;
+                    let cantArena = areaM2 > 0 ? (areaM2 * 0.8).toFixed(2) : 5;
+                    let cantMano = areaM2 > 0 ? areaM2 : 1;
+
+                    agregarFilaDetalle('MATERIAL', { descripcion: 'Cemento Gris (Bolsas)', unidad: 'Bolsa', cantidad: cantCemento, costo_unitario: 190.00, margen_porcentaje: 20 });
+                    agregarFilaDetalle('MATERIAL', { descripcion: 'Arena de Río (Metros)', unidad: 'M3', cantidad: cantArena, costo_unitario: 450.00, margen_porcentaje: 20 });
+                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Mano de Obra de Construcción', unidad: 'Glb', cantidad: cantMano, costo_unitario: 1200.00, margen_porcentaje: 15 });
+                } 
+                else if (tipo === 'Electricidad') {
+                    let cantTubos = areaM2 > 0 ? (areaM2 * 0.3).toFixed(2) : 8;
+                    let cantCable = areaM2 > 0 ? (areaM2 * 2.5).toFixed(2) : 50;
+
+                    agregarFilaDetalle('MATERIAL', { descripcion: 'Tubo Conduit PVC 1/2"', unidad: 'Tubo', cantidad: cantTubos, costo_unitario: 65.00, margen_porcentaje: 20 });
+                    agregarFilaDetalle('MATERIAL', { descripcion: 'Rollo de Cable THHN Calibre 12', unidad: 'Rollo', cantidad: 1, costo_unitario: 1450.00, margen_porcentaje: 20 });
+                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Instalación y Cableado Eléctrico', unidad: 'Punto', cantidad: cantCable, costo_unitario: 250.00, margen_porcentaje: 15 });
+                }
+                else if (tipo === 'PVC') {
+                    let cantPvc = areaM2 > 0 ? (areaM2 * 0.4).toFixed(2) : 10;
+                    agregarFilaDetalle('MATERIAL', { descripcion: 'Cielo Falso / Láminas PVC', unidad: 'Pza', cantidad: cantPvc, costo_unitario: 280.00, margen_porcentaje: 20 });
+                    agregarFilaDetalle('MATERIAL', { descripcion: 'Pegamento para PVC / Perfilería', unidad: 'Glb', cantidad: 2, costo_unitario: 150.00, margen_porcentaje: 20 });
+                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Instalación de Cielos o Tubería PVC', unidad: 'M2', cantidad: areaM2 > 0 ? areaM2 : 10, costo_unitario: 180.00, margen_porcentaje: 15 });
+                }
+                else if (tipo === 'Acabados') {
+                    agregarFilaDetalle('MATERIAL', { descripcion: 'Pintura de Vinil (Galón)', unidad: 'Gal', cantidad: 4, costo_unitario: 450.00, margen_porcentaje: 20 });
+                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Aplicación de Acabados y Pintura', unidad: 'Glb', cantidad: 1, costo_unitario: 2500.00, margen_porcentaje: 15 });
+                }
+            }
         }
 
         function cerrarModalCotizacion() {
@@ -465,7 +534,12 @@ try {
                         document.getElementById('cot_cliente_nombre').value = c.cliente_nombre;
                         document.getElementById('cot_cliente_rtn').value = c.cliente_rtn || '';
                         document.getElementById('cot_proyecto_nombre').value = c.proyecto_nombre;
-                        document.getElementById('cot_clasificacion').value = c.clasificacion_proyecto || '';
+                        document.getElementById('cot_clasificacion').value = c.clasificacion_proyecto || 'Construcción';
+                        
+                        // Seleccionar el radio button correspondiente
+                        const radioBtn = document.querySelector(`input[name="clasificacion_radio"][value="${c.clasificacion_proyecto}"]`);
+                        if (radioBtn) radioBtn.checked = true;
+
                         document.getElementById('cot_ancho').value = c.ancho || 0;
                         document.getElementById('cot_longitud').value = c.longitud || 0;
 
