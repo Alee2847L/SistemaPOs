@@ -159,7 +159,7 @@ try {
         // Obtener detalles de esta orden de compra específica
         $stmtOcDet = $pdo->prepare("SELECT * FROM orden_compra_detalles WHERE orden_compra_id = ?");
         $stmtOcDet->execute([$oc['id']]);
-        $oc_detalles = $stmtOcDet.fetchAll(PDO::FETCH_ASSOC);
+        $oc_detalles = $stmtOcDet->fetchAll(PDO::FETCH_ASSOC);
     ?>
     <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 mb-8 page-break">
         
