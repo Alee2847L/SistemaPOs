@@ -102,7 +102,7 @@ try {
 
     <!-- MODAL FORMULARIO DE COTIZACIÓN -->
     <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto" id="modalCotizacion" style="display: none;">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col my-8">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-7xl overflow-hidden flex flex-col my-8">
             <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h4 class="font-bold text-slate-900 text-base" id="modalTitulo">Nueva Cotización de Proyecto</h4>
                 <button type="button" onclick="cerrarModalCotizacion()" class="text-slate-400 hover:text-slate-600 p-1"><i class="fa-solid fa-xmark"></i></button>
@@ -114,7 +114,7 @@ try {
 
                     <!-- SELECTOR DE CLASIFICACIÓN CON RADIO BUTTONS -->
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Seleccione el Tipo de Cotización:</label>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Seleccione el Tipo / Categoría de Proyecto:</label>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
                                 <input type="radio" name="clasificacion_radio" value="Construcción" class="text-blue-600" checked onchange="actualizarClasificacion(this.value)">
@@ -155,7 +155,7 @@ try {
                     <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                         <div class="sm:col-span-2">
                             <label class="block font-semibold text-xs text-slate-600 mb-1">Nombre del Proyecto:</label>
-                            <input type="text" id="cot_proyecto_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="Ej. Cielo Falso PVC / Eléctrica" required>
+                            <input type="text" id="cot_proyecto_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="Ej. Losa de Concreto / Instalación Eléctrica" required>
                         </div>
                         <div class="grid grid-cols-2 gap-2 sm:col-span-2">
                             <div>
@@ -174,13 +174,13 @@ try {
                     <!-- Desglose de Ítems -->
                     <div>
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
-                            <h5 class="font-bold text-slate-800 text-sm"><i class="fa-solid fa-list-check me-1 text-blue-600"></i> Desglose de Materiales y Mano de Obra</h5>
+                            <h5 class="font-bold text-slate-800 text-sm"><i class="fa-solid fa-list-check me-1 text-blue-600"></i> Desglose de Materiales y Mano de Obra (Filtrados por Categoría)</h5>
                             <div class="flex gap-2">
                                 <button type="button" onclick="agregarFilaDetalle('MATERIAL')" class="bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold px-3 py-2 rounded-xl transition">
-                                    <i class="fa-solid fa-box me-1"></i> + Material
+                                    <i class="fa-solid fa-box me-1"></i> + Material del Catálogo
                                 </button>
                                 <button type="button" onclick="agregarFilaDetalle('MANO_OBRA')" class="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold px-3 py-2 rounded-xl transition">
-                                    <i class="fa-solid fa-hard-hat me-1"></i> + Mano de Obra
+                                    <i class="fa-solid fa-hard-hat me-1"></i> + Mano de Obra Libre
                                 </button>
                             </div>
                         </div>
@@ -189,15 +189,15 @@ try {
                             <table class="w-full text-left border-collapse text-xs">
                                 <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold">
                                     <tr>
-                                        <th class="py-2.5 px-3" style="width: 10%;">Tipo</th>
-                                        <th class="py-2.5 px-3" style="width: 25%;">Descripción</th>
-                                        <th class="py-2.5 px-3" style="width: 20%;">Proveedor (Material)</th>
-                                        <th class="py-2.5 px-3" style="width: 10%;">Unidad</th>
-                                        <th class="py-2.5 px-3" style="width: 10%;">Cantidad</th>
-                                        <th class="py-2.5 px-3" style="width: 10%;">Costo Unit.</th>
-                                        <th class="py-2.5 px-3" style="width: 8%;">Margen %</th>
-                                        <th class="py-2.5 px-3" style="width: 10%;">Total Margen</th>
-                                        <th class="py-2.5 px-3 text-center" style="width: 5%;">X</th>
+                                        <th class="py-2.5 px-3" style="width: 8%;">Tipo</th>
+                                        <th class="py-2.5 px-3" style="width: 25%;">Producto / Descripción</th>
+                                        <th class="py-2.5 px-3" style="width: 22%;">Proveedor (Ferretería / Opción)</th>
+                                        <th class="py-2.5 px-3" style="width: 8%;">Unidad</th>
+                                        <th class="py-2.5 px-3" style="width: 8%;">Cantidad</th>
+                                        <th class="py-2.5 px-3" style="width: 10%;">Costo Unit. (L.)</th>
+                                        <th class="py-2.5 px-3" style="width: 7%;">Margen %</th>
+                                        <th class="py-2.5 px-3" style="width: 9%;">Total Margen</th>
+                                        <th class="py-2.5 px-3 text-center" style="width: 3%;">X</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tablaDetalles" class="divide-y divide-slate-100 bg-white">
@@ -253,12 +253,12 @@ try {
     <script>
         const esAdmin = <?php echo $es_admin ? 'true' : 'false'; ?>;
         let listaCotizacionesOriginal = [];
-        let proveedoresGlobal = [];
+        let catalogoProductosGlobal = [];
 
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('txtClaveAdminCot').addEventListener('keydown', (e) => { if(e.key === 'Enter') ejecutarEliminacionCotizacion(); });
             cargarCotizaciones();
-            cargarProveedores();
+            cargarCatalogoProductos();
         });
 
         function cargarCotizaciones() {
@@ -272,26 +272,20 @@ try {
                 });
         }
 
-        function cargarProveedores() {
-            return fetch('../api/cotizaciones.php?accion=listar_proveedores')
-                .then(res => {
-                    const contentType = res.headers.get("content-type");
-                    if (contentType && contentType.indexOf("application/json") !== -1) {
-                        return res.json();
-                    } else {
-                        throw new Error("La respuesta del servidor no es un JSON válido.");
-                    }
-                })
+        // Carga los productos con sus múltiples proveedores, precios y categorías
+        function cargarCatalogoProductos() {
+            return fetch('../api/cotizaciones.php?accion=listar_productos_proveedores')
+                .then(res => res.json())
                 .then(res => {
                     if (res && res.success) {
-                        proveedoresGlobal = res.data;
+                        catalogoProductosGlobal = res.data;
                     } else {
-                        proveedoresGlobal = [];
+                        catalogoProductosGlobal = [];
                     }
                 })
                 .catch(err => {
-                    console.warn('Aviso al cargar proveedores:', err);
-                    proveedoresGlobal = [];
+                    console.warn('Aviso al cargar catálogo de productos:', err);
+                    catalogoProductosGlobal = [];
                 });
         }
 
@@ -324,7 +318,7 @@ try {
         }
 
         async function abrirModalNuevaCotizacion() {
-            await cargarProveedores();
+            await cargarCatalogoProductos();
             document.getElementById('modalTitulo').innerText = 'Nueva Cotización de Proyecto';
             document.getElementById('cot_id').value = '';
             document.getElementById('formCotizacion').reset();
@@ -333,51 +327,54 @@ try {
             document.getElementById('cot_clasificacion').value = 'Construcción';
             document.getElementById('tablaDetalles').innerHTML = '';
             
-            // Cargar materiales por defecto para Construcción con área 0
             recalcularPorArea();
             document.getElementById('modalCotizacion').style.display = 'flex';
         }
 
-        // Lógica de dosificación automática basada en el tipo y M2
-        function recalcularPorArea() {
-            const tipo = document.getElementById('cot_clasificacion').value;
+        // Carga automática de productos basados en la categoría seleccionada y cálculo por M2
+        function recalcarPorArea() {
+            const categoriaActual = document.getElementById('cot_clasificacion').value;
             const ancho = parseFloat(document.getElementById('cot_ancho').value) || 0;
             const longitud = parseFloat(document.getElementById('cot_longitud').value) || 0;
             const areaM2 = ancho * longitud;
 
             const tbody = document.getElementById('tablaDetalles');
             
-            // Si el usuario ya personalizó filas o es nueva, cargamos las plantillas base por M2
             if (tbody.children.length === 0 || areaM2 > 0) {
-                tbody.innerHTML = ''; // Limpiar para actualizar dosificación
-                
-                if (tipo === 'Construcción') {
-                    let cantCemento = areaM2 > 0 ? (areaM2 * 0.5).toFixed(2) : 10;
-                    let cantArena = areaM2 > 0 ? (areaM2 * 0.8).toFixed(2) : 5;
-                    let cantMano = areaM2 > 0 ? areaM2 : 1;
+                tbody.innerHTML = ''; 
 
-                    agregarFilaDetalle('MATERIAL', { descripcion: 'Cemento Gris (Bolsas)', unidad: 'Bolsa', cantidad: cantCemento, costo_unitario: 190.00, margen_porcentaje: 20 });
-                    agregarFilaDetalle('MATERIAL', { descripcion: 'Arena de Río (Metros)', unidad: 'M3', cantidad: cantArena, costo_unitario: 450.00, margen_porcentaje: 20 });
-                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Mano de Obra de Construcción', unidad: 'Glb', cantidad: cantMano, costo_unitario: 1200.00, margen_porcentaje: 15 });
-                } 
-                else if (tipo === 'Electricidad') {
-                    let cantTubos = areaM2 > 0 ? (areaM2 * 0.3).toFixed(2) : 8;
-                    let cantCable = areaM2 > 0 ? (areaM2 * 2.5).toFixed(2) : 50;
+                // Filtrar productos del catálogo que coincidan con la categoría seleccionada
+                const productosCategoria = catalogoProductosGlobal.filter(p => p.categoria.toLowerCase() === categoriaActual.toLowerCase());
 
-                    agregarFilaDetalle('MATERIAL', { descripcion: 'Tubo Conduit PVC 1/2"', unidad: 'Tubo', cantidad: cantTubos, costo_unitario: 65.00, margen_porcentaje: 20 });
-                    agregarFilaDetalle('MATERIAL', { descripcion: 'Rollo de Cable THHN Calibre 12', unidad: 'Rollo', cantidad: 1, costo_unitario: 1450.00, margen_porcentaje: 20 });
-                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Instalación y Cableado Eléctrico', unidad: 'Punto', cantidad: cantCable, costo_unitario: 250.00, margen_porcentaje: 15 });
+                if (productosCategoria.length > 0) {
+                    productosCategoria.forEach(prod => {
+                        let cantidadSugerida = 1;
+                        if(areaM2 > 0) {
+                            cantidadSugerida = (areaM2 * (prod.factor_rendimiento || 0.5)).toFixed(2);
+                        }
+                        agregarFilaDetalle('MATERIAL', {
+                            producto_id: prod.id,
+                            descripcion: prod.nombre,
+                            unidad: prod.unidad,
+                            cantidad: cantidadSugerida,
+                            proveedores_opciones: prod.proveedores_precios, // Array con opciones de ferreterías/proveedores y precios
+                            proveedor_id_activo: prod.proveedor_sugerido_id,
+                            costo_unitario: prod.costo_sugerido || 0,
+                            margen_porcentaje: prod.margen_porcentaje || 20
+                        });
+                    });
                 }
-                else if (tipo === 'PVC') {
-                    let cantPvc = areaM2 > 0 ? (areaM2 * 0.4).toFixed(2) : 10;
-                    agregarFilaDetalle('MATERIAL', { descripcion: 'Cielo Falso / Láminas PVC', unidad: 'Pza', cantidad: cantPvc, costo_unitario: 280.00, margen_porcentaje: 20 });
-                    agregarFilaDetalle('MATERIAL', { descripcion: 'Pegamento para PVC / Perfilería', unidad: 'Glb', cantidad: 2, costo_unitario: 150.00, margen_porcentaje: 20 });
-                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Instalación de Cielos o Tubería PVC', unidad: 'M2', cantidad: areaM2 > 0 ? areaM2 : 10, costo_unitario: 180.00, margen_porcentaje: 15 });
-                }
-                else if (tipo === 'Acabados') {
-                    agregarFilaDetalle('MATERIAL', { descripcion: 'Pintura de Vinil (Galón)', unidad: 'Gal', cantidad: 4, costo_unitario: 450.00, margen_porcentaje: 20 });
-                    agregarFilaDetalle('MANO_OBRA', { descripcion: 'Aplicación de Acabados y Pintura', unidad: 'Glb', cantidad: 1, costo_unitario: 2500.00, margen_porcentaje: 15 });
-                }
+
+                // Agregar Mano de Obra estándar para esta categoría
+                let cantMano = areaM2 > 0 ? areaM2 : 1;
+                let costoMano = categoriaActual === 'Construcción' ? 1200 : (categoriaActual === 'Electricidad' ? 250 : 180);
+                agregarFilaDetalle('MANO_OBRA', {
+                    descripcion: `Mano de Obra especializada - ${categoriaActual}`,
+                    unidad: categoriaActual === 'Electricidad' ? 'Punto' : 'Glb',
+                    cantidad: cantMano,
+                    costo_unitario: costoMano,
+                    margen_porcentaje: 15
+                });
             }
         }
 
@@ -400,25 +397,47 @@ try {
             const cantidad = item ? item.cantidad : 1;
             const costo = item ? item.costo_unitario : 0.00;
             const margen = item ? item.margen_porcentaje : 20.00;
-            const proveedorActualId = item ? item.proveedor_id : '';
+            const productoId = item && item.producto_id ? item.producto_id : '';
 
-            let opcionesProveedores = '<option value="">Seleccione proveedor...</option>';
-            proveedoresGlobal.forEach(p => {
-                const selected = (String(p.id) === String(proveedorActualId)) ? 'selected' : '';
-                opcionesProveedores += `<option value="${p.id}" ${selected}>${p.nombre_empresa}</option>`;
-            });
+            let selectorProductoHtml = '';
+            let selectorProveedorHtml = '';
 
-            const proveedorHtml = isMaterial 
-                ? `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs proveedor-id" required>${opcionesProveedores}</select>`
-                : `<span class="text-slate-400 text-[10px] italic">N/A (Mano Obra)</span><input type="hidden" class="proveedor-id" value="0">`;
+            if (isMaterial) {
+                // Selector de productos filtrados por la categoría activa
+                const categoriaActual = document.getElementById('cot_clasificacion').value;
+                const prodsFiltrados = catalogoProductosGlobal.filter(p => p.categoria.toLowerCase() === categoriaActual.toLowerCase());
+
+                let opcionesProd = '<option value="">Seleccione producto...</option>';
+                prodsFiltrados.forEach(p => {
+                    const sel = (String(p.id) === String(productoId)) ? 'selected' : '';
+                    opcionesProd += `<option value="${p.id}" ${sel}>${p.nombre}</option>`;
+                });
+
+                selectorProductoHtml = `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs producto-select" onchange="cambiarProductoCatalogo(this)">${opcionesProd}</select>`;
+                
+                // Opciones de proveedores para este producto (múltiples ferreterías con sus precios)
+                let opcionesProv = '<option value="">Seleccione proveedor...</option>';
+                let proveedoresOpciones = item && item.proveedores_opciones ? item.proveedores_opciones : [];
+                
+                proveedoresOpciones.forEach(prov => {
+                    const selProv = (String(prov.proveedor_id) === String(item.proveedor_id_activo)) ? 'selected' : '';
+                    opcionesProv += `<option value="${prov.proveedor_id}" data-precio="${prov.precio}" ${selProv}>${prov.nombre_empresa} (L. ${Number(prov.precio).toFixed(2)})</option>`;
+                });
+
+                selectorProveedorHtml = `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs proveedor-select" onchange="cambiarPrecioProveedor(this)">${opcionesProv}</select>`;
+            } else {
+                selectorProductoHtml = `<input type="text" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs descripcion" value="${descripcion}" placeholder="Descripción mano de obra" required>`;
+                selectorProveedorHtml = `<span class="text-slate-400 text-[10px] italic">N/A</span><input type="hidden" class="proveedor-select" value="0">`;
+            }
 
             row.innerHTML = `
                 <td class="py-2.5 px-3">
                     <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${badgeClass}">${tipo}</span>
                     <input type="hidden" class="tipo_item" value="${tipo}">
+                    <input type="hidden" class="producto_id" value="${productoId}">
                 </td>
-                <td class="py-2.5 px-3"><input type="text" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs descripcion" value="${descripcion}" placeholder="Descripción" required></td>
-                <td class="py-2.5 px-3">${proveedorHtml}</td>
+                <td class="py-2.5 px-3">${selectorProductoHtml}</td>
+                <td class="py-2.5 px-3">${selectorProveedorHtml}</td>
                 <td class="py-2.5 px-3"><input type="text" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs unidad" value="${unidad}" required></td>
                 <td class="py-2.5 px-3"><input type="number" step="0.0001" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs cantidad" value="${cantidad}" oninput="calcularTotalesModal()"></td>
                 <td class="py-2.5 px-3"><input type="number" step="0.01" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs costo" value="${costo}" oninput="calcularTotalesModal()"></td>
@@ -427,6 +446,50 @@ try {
                 <td class="py-2.5 px-3 text-center"><button type="button" class="text-rose-500 hover:text-rose-700 p-1" onclick="this.closest('tr').remove(); calcularTotalesModal();"><i class="fa-solid fa-xmark"></i></button></td>
             `;
             tbody.appendChild(row);
+            calcularTotalesModal();
+        }
+
+        // Al cambiar de producto en el select, cargamos automáticamente sus proveedores y precios alternativos
+        function cambiarProductoCatalogo(selectElem) {
+            const fila = selectElem.closest('tr');
+            const prodId = selectElem.value;
+            const productoEncontrado = catalogoProductosGlobal.find(p => String(p.id) === String(prodId));
+
+            if (productoEncontrado) {
+                fila.querySelector('.producto_id').value = productoEncontrado.id;
+                fila.querySelector('.unidad').value = productoEncontrado.unidad;
+                fila.querySelector('.margen').value = productoEncontrado.margen_porcentaje || 20;
+
+                // Llenar select de proveedores con las opciones de este producto específico
+                const selectProv = fila.querySelector('.proveedor-select');
+                let opcionesProv = '<option value="">Seleccione proveedor...</option>';
+                
+                if (productoEncontrado.proveedores_precios && productoEncontrado.proveedores_precios.length > 0) {
+                    productoEncontrado.proveedores_precios.forEach(prov => {
+                        const sel = (String(prov.proveedor_id) === String(productoEncontrado.proveedor_sugerido_id)) ? 'selected' : '';
+                        opcionesProv += `<option value="${prov.proveedor_id}" data-precio="${prov.precio}" ${sel}>${prov.nombre_empresa} (L. ${Number(prov.precio).toFixed(2)})</option>`;
+                    });
+                }
+                selectProv.innerHTML = opcionesProv;
+
+                // Asignar el costo del proveedor por defecto seleccionado
+                if (selectProv.options.length > 1) {
+                    selectProv.selectedIndex = 1; // Seleccionar el primer proveedor con beneficio
+                    cambiarPrecioProveedor(selectProv);
+                } else {
+                    fila.querySelector('.costo').value = 0;
+                    calcularTotalesModal();
+                }
+            }
+        }
+
+        // Al cambiar de proveedor, el sistema cambia automáticamente el costo del producto con ese vendedor
+        function cambiarPrecioProveedor(selectProv) {
+            const fila = selectProv.closest('tr');
+            const selectedOption = selectProv.options[selectProv.selectedIndex];
+            const precioProveedor = selectedOption.getAttribute('data-precio') || 0;
+
+            fila.querySelector('.costo').value = parseFloat(precioProveedor).toFixed(2);
             calcularTotalesModal();
         }
 
@@ -462,19 +525,24 @@ try {
             }
 
             let detalles = [];
-            let errorProveedor = false;
+            let errorValidacion = false;
 
             filas.forEach(fila => {
                 const tipoItem = fila.querySelector('.tipo_item').value;
-                const proveedorId = fila.querySelector('.proveedor-id').value;
+                const productoId = fila.querySelector('.producto_id') ? fila.querySelector('.producto_id').value : '';
+                const proveedorId = fila.querySelector('.proveedor-select').value;
+                const descripcionElem = fila.querySelector('.producto-select') ? 
+                    fila.querySelector('.producto-select').options[fila.querySelector('.producto-select').selectedIndex].text : 
+                    fila.querySelector('.descripcion').value;
 
                 if (tipoItem === 'MATERIAL' && (!proveedorId || proveedorId === '')) {
-                    errorProveedor = true;
+                    errorValidacion = true;
                 }
 
                 detalles.push({
                     tipo_item: tipoItem,
-                    descripcion: fila.querySelector('.descripcion').value,
+                    producto_id: productoId || null,
+                    descripcion: descripcionElem,
                     proveedor_id: proveedorId,
                     unidad: fila.querySelector('.unidad').value,
                     cantidad: parseFloat(fila.querySelector('.cantidad').value),
@@ -483,8 +551,8 @@ try {
                 });
             });
 
-            if (errorProveedor) {
-                alert('Todos los materiales deben tener un proveedor seleccionado.');
+            if (errorValidacion) {
+                alert('Todos los materiales del catálogo deben tener un proveedor/ferretería seleccionado.');
                 return;
             }
 
@@ -522,7 +590,7 @@ try {
         });
 
         async function verCotizacion(id) {
-            await cargarProveedores();
+            await cargarCatalogoProductos();
             fetch(`../api/cotizaciones.php?accion=obtener&id=${id}`)
                 .then(res => res.json())
                 .then(res => {
@@ -536,7 +604,6 @@ try {
                         document.getElementById('cot_proyecto_nombre').value = c.proyecto_nombre;
                         document.getElementById('cot_clasificacion').value = c.clasificacion_proyecto || 'Construcción';
                         
-                        // Seleccionar el radio button correspondiente
                         const radioBtn = document.querySelector(`input[name="clasificacion_radio"][value="${c.clasificacion_proyecto}"]`);
                         if (radioBtn) radioBtn.checked = true;
 

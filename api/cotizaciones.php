@@ -33,6 +33,49 @@ if ($accion === 'listar') {
     exit;
 }
 
+// --- 1.1. LISTAR PRODUCTOS CON SUS MÚLTIPLES PROVEEDORES Y PRECIOS ---
+if ($accion === 'listar_productos_proveedores') {
+    try {
+        // 1. Obtener productos de la base de datos (asegúrate de tener las columnas categoria y factor_rendimiento)
+        $stmt = $pdo->query("SELECT id, nombre, unidad, categoria, factor_rendimiento, margen_porcentaje FROM productos");
+        $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $resultado = [];
+        foreach ($productos as $prod) {
+            // 2. Obtener las ferreterías/proveedores y precios asociados a este producto específico desde la tabla pivote
+            $stmt_prov = $pdo->prepare("
+                SELECT pp.proveedor_id, p.nombre_empresa, pp.precio 
+                FROM producto_proveedor pp 
+                INNER JOIN proveedores p ON pp.proveedor_id = p.id 
+                WHERE pp.producto_id = ?
+            ");
+            $stmt_prov->execute([$prod['id']]);
+            $proveedores_precios = $stmt_prov->fetchAll(PDO::FETCH_ASSOC);
+
+            // Proveedor por defecto (el primero de la lista o el más económico)
+            $proveedor_sugerido_id = !empty($proveedores_precios) ? $proveedores_precios[0]['proveedor_id'] : null;
+            $costo_sugerido = !empty($proveedores_precios) ? $proveedores_precios[0]['precio'] : 0;
+
+            $resultado[] = [
+                'id' => $prod['id'],
+                'nombre' => $prod['nombre'],
+                'unidad' => $prod['unidad'],
+                'categoria' => $prod['categoria'] ?? 'Construcción',
+                'factor_rendimiento' => $prod['factor_rendimiento'] ?? 0.5,
+                'margen_porcentaje' => $prod['margen_porcentaje'] ?? 20,
+                'proveedor_sugerido_id' => $proveedor_sugerido_id,
+                'costo_sugerido' => $costo_sugerido,
+                'proveedores_precios' => $proveedores_precios
+            ];
+        }
+
+        echo json_encode(['success' => true, 'data' => $resultado]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Error al listar catálogo: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
 // --- 2. OBTENER UNA COTIZACIÓN Y SUS DETALLES ---
 if ($accion === 'obtener') {
     $id = intval($_GET['id'] ?? 0);
@@ -57,7 +100,7 @@ if ($accion === 'obtener') {
     exit;
 }
 
-// --- 3. GUARDAR / CREAR COTIZACIÓN (SOLO CLIENTE Y DETALLES) ---
+// --- 3. GUARDAR / CREAR COTIZACIÓN (CON PRODUCTO Y PROVEEDOR SELECCIONADO) ---
 if ($accion === 'guardar') {
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -88,7 +131,7 @@ if ($accion === 'guardar') {
             exit;
         }
 
-        // Insertar Cotización principal con estado GUARDADA
+        // Insertar Cotización principal
         $sql_cot = "INSERT INTO cotizaciones (numero_cotizacion, fecha_cotizacion, cliente_nombre, cliente_rtn, proyecto_nombre, clasificacion_proyecto, ancho, longitud, subtotal_general, total_general, estado, usuario_creacion) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GUARDADA', ?)";
         
@@ -101,12 +144,14 @@ if ($accion === 'guardar') {
         
         $cotizacion_id = $pdo->lastInsertId();
 
-        // Insertar Detalles
-        $sql_det = "INSERT INTO cotizacion_detalles (cotizacion_id, tipo_item, descripcion, unidad, cantidad, costo_unitario, margen_porcentaje, subtotal, total_con_margen) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        // Insertar Detalles (Asegúrate de incluir producto_id y proveedor_id en tu tabla cotizacion_detalles si deseas almacenar la trazabilidad)
+        $sql_det = "INSERT INTO cotizacion_detalles (cotizacion_id, producto_id, proveedor_id, tipo_item, descripcion, unidad, cantidad, costo_unitario, margen_porcentaje, subtotal, total_con_margen) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt_det = $pdo->prepare($sql_det);
 
         foreach ($input['detalles'] as $item) {
+            $producto_id    = !empty($item['producto_id']) ? intval($item['producto_id']) : null;
+            $proveedor_id   = !empty($item['proveedor_id']) ? intval($item['proveedor_id']) : null;
             $tipo_item      = $item['tipo_item']; 
             $descripcion    = trim($item['descripcion']);
             $unidad         = trim($item['unidad']);
@@ -118,7 +163,7 @@ if ($accion === 'guardar') {
             $total_linea_margen = $subtotal_linea * (1 + ($margen / 100));
 
             $stmt_det->execute([
-                $cotizacion_id, $tipo_item, $descripcion, $unidad, 
+                $cotizacion_id, $producto_id, $proveedor_id, $tipo_item, $descripcion, $unidad, 
                 $cantidad, $costo_unitario, $margen, $subtotal_linea, $total_linea_margen
             ]);
         }
@@ -143,7 +188,6 @@ if ($accion === 'generar_ordenes') {
     try {
         $pdo->beginTransaction();
 
-        // Verificar cotización
         $stmtCot = $pdo->prepare("SELECT * FROM cotizaciones WHERE id = ?");
         $stmtCot->execute([$cotizacion_id]);
         $cot = $stmtCot->fetch(PDO::FETCH_ASSOC);
@@ -153,7 +197,6 @@ if ($accion === 'generar_ordenes') {
             exit;
         }
 
-        // Obtener detalles tipo MATERIAL
         $stmtDet = $pdo->prepare("SELECT * FROM cotizacion_detalles WHERE cotizacion_id = ? AND tipo_item = 'MATERIAL'");
         $stmtDet->execute([$cotizacion_id]);
         $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
@@ -163,13 +206,11 @@ if ($accion === 'generar_ordenes') {
             exit;
         }
 
-        // Agrupar por proveedor (Nota: asegurémonos de que la tabla cotizacion_detalles guarde el proveedor_id si lo necesitas, o lo asociamos)
-        // Como guardamos los detalles antes, agruparemos los materiales. Si necesitas guardar el proveedor_id en cotizacion_detalles, lo validamos.
-        // Agrupación estándar por proveedor predeterminado o asociado:
+        // Agrupar automáticamente por el proveedor seleccionado en cada línea de la cotización
         $ordenes_por_proveedor = [];
         foreach ($detalles as $item) {
-            // Si en tu tabla cotizacion_detalles agregaste la columna proveedor_id, úsala aquí:
-            $proveedor_id = intval($item['proveedor_id'] ?? 1); 
+            $proveedor_id = intval($item['proveedor_id'] ?? 0);
+            if ($proveedor_id <= 0) continue; 
             
             if (!isset($ordenes_por_proveedor[$proveedor_id])) {
                 $ordenes_por_proveedor[$proveedor_id] = [];
@@ -212,15 +253,15 @@ if ($accion === 'generar_ordenes') {
             $contador_oc++;
         }
 
-        // Actualizar estado de la cotización
         $stmtUp = $pdo->prepare("UPDATE cotizaciones SET estado = 'CONVERTIDA A ORDEN' WHERE id = ?");
         $stmtUp->execute([$cotizacion_id]);
 
         $pdo->commit();
-        echo json_encode(['success' => true, 'message' => '¡Órdenes de compra generadas con éxito!']);
+        echo json_encode(['success' => true, 'message' => '¡Órdenes de compra generadas con éxito por proveedor!']);
 
     } catch (Exception $e) {
         $pdo->rollBack();
+        echo json_ico([$e->getMessage()]); // Nota: ajustado a formato limpio
         echo json_encode(['success' => false, 'message' => 'Error al generar órdenes: ' . $e->getMessage()]);
     }
     exit;
@@ -244,7 +285,7 @@ if ($accion === 'eliminar') {
     exit;
 }
 
-// --- 5. LISTAR PROVEEDORES (Para el selector de la orden de compra) ---
+// --- 5. LISTAR PROVEEDORES ---
 if ($accion === 'listar_proveedores') {
     try {
         $stmt = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
