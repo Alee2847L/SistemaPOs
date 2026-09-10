@@ -13,6 +13,28 @@ if (!isset($_SESSION['usuario_id'])) {
 $accion = $_REQUEST['accion'] ?? '';
 $rolUsuario = $_SESSION['usuario_rol'] ?? 'vendedor';
 
+// Limpiar cualquier salida previa para evitar errores de sintaxis JSON
+if (ob_get_length()) ob_clean();
+header('Content-Type: application/json; charset=utf-8');
+
+if (!isset($_SESSION['usuario_id'])) {
+    echo json_encode(['success' => false, 'message' => 'No autorizado']);
+    exit;
+}
+
+$accion = $_REQUEST['accion'] ?? '';
+
+// --- 5. LISTAR PROVEEDORES ---
+if ($accion === 'listar_proveedores') {
+    try {
+        $stmt = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
+        $proveedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'data' => $proveedores]);
+    } catch (PDOException $e) {
+        echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    }
+    exit;
+}
 // --- 1. LISTAR COTIZACIONES ---
 if ($accion === 'listar') {
     try {
