@@ -57,7 +57,7 @@ if ($accion === 'obtener') {
     exit;
 }
 
-// --- 3. GUARDAR / CREAR COTIZACIÓN Y ÓRDENES DE COMPRA ---
+// --- 3. GUARDAR / CREAR COTIZACIÓN (SOLO CLIENTE Y DETALLES) ---
 if ($accion === 'guardar') {
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -88,7 +88,7 @@ if ($accion === 'guardar') {
             exit;
         }
 
-        // Insertar Cotización principal
+        // Insertar Cotización principal con estado GUARDADA
         $sql_cot = "INSERT INTO cotizaciones (numero_cotizacion, fecha_cotizacion, cliente_nombre, cliente_rtn, proyecto_nombre, clasificacion_proyecto, ancho, longitud, subtotal_general, total_general, estado, usuario_creacion) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GUARDADA', ?)";
         
@@ -106,52 +106,93 @@ if ($accion === 'guardar') {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt_det = $pdo->prepare($sql_det);
 
-        $ordenes_por_proveedor = [];
-
         foreach ($input['detalles'] as $item) {
-            $tipo_item      = $item['tipo_item']; // 'MATERIAL' o 'MANO_OBRA'
+            $tipo_item      = $item['tipo_item']; 
             $descripcion    = trim($item['descripcion']);
             $unidad         = trim($item['unidad']);
             $cantidad       = floatval($item['cantidad']);
             $costo_unitario = floatval($item['costo_unitario']);
             $margen         = floatval($item['margen_porcentaje']);
-            $proveedor_id   = intval($item['proveedor_id'] ?? 0);
             
             $subtotal_linea = $cantidad * $costo_unitario;
             $total_linea_margen = $subtotal_linea * (1 + ($margen / 100));
 
-            // Guardar detalle de la cotización
             $stmt_det->execute([
                 $cotizacion_id, $tipo_item, $descripcion, $unidad, 
                 $cantidad, $costo_unitario, $margen, $subtotal_linea, $total_linea_margen
             ]);
-
-            // Si es un material con proveedor, lo agrupamos para las órdenes de compra
-            if ($tipo_item === 'MATERIAL' && $proveedor_id > 0) {
-                if (!isset($ordenes_por_proveedor[$proveedor_id])) {
-                    $ordenes_por_proveedor[$proveedor_id] = [];
-                }
-                $ordenes_por_proveedor[$proveedor_id][] = [
-                    'descripcion'    => $descripcion,
-                    'unidad'         => $unidad,
-                    'cantidad'       => $cantidad,
-                    'costo_unitario' => $costo_unitario,
-                    'subtotal'       => $subtotal_linea
-                ];
-            }
         }
 
-        // Crear una Orden de Compra por cada Proveedor único encontrado
+        $pdo->commit();
+        echo json_encode([
+            'success' => true, 
+            'message' => '¡Cotización #' . $numero_cotizacion . ' creada con éxito!'
+        ]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Error BD: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// --- 3.1. GENERAR ÓRDENES DE COMPRA BAJO DEMANDA ---
+if ($accion === 'generar_ordenes') {
+    $cotizacion_id = intval($_POST['id'] ?? $_GET['id'] ?? 0);
+
+    try {
+        $pdo->beginTransaction();
+
+        // Verificar cotización
+        $stmtCot = $pdo->prepare("SELECT * FROM cotizaciones WHERE id = ?");
+        $stmtCot->execute([$cotizacion_id]);
+        $cot = $stmtCot->fetch(PDO::FETCH_ASSOC);
+
+        if (!$cot) {
+            echo json_encode(['success' => false, 'message' => 'Cotización no encontrada']);
+            exit;
+        }
+
+        // Obtener detalles tipo MATERIAL
+        $stmtDet = $pdo->prepare("SELECT * FROM cotizacion_detalles WHERE cotizacion_id = ? AND tipo_item = 'MATERIAL'");
+        $stmtDet->execute([$cotizacion_id]);
+        $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($detalles)) {
+            echo json_encode(['success' => false, 'message' => 'Esta cotización no tiene materiales registrados para ordenar.']);
+            exit;
+        }
+
+        // Agrupar por proveedor (Nota: asegurémonos de que la tabla cotizacion_detalles guarde el proveedor_id si lo necesitas, o lo asociamos)
+        // Como guardamos los detalles antes, agruparemos los materiales. Si necesitas guardar el proveedor_id en cotizacion_detalles, lo validamos.
+        // Agrupación estándar por proveedor predeterminado o asociado:
+        $ordenes_por_proveedor = [];
+        foreach ($detalles as $item) {
+            // Si en tu tabla cotizacion_detalles agregaste la columna proveedor_id, úsala aquí:
+            $proveedor_id = intval($item['proveedor_id'] ?? 1); 
+            
+            if (!isset($ordenes_por_proveedor[$proveedor_id])) {
+                $ordenes_por_proveedor[$proveedor_id] = [];
+            }
+            $ordenes_por_proveedor[$proveedor_id][] = [
+                'descripcion'    => $item['descripcion'],
+                'unidad'         => $item['unidad'],
+                'cantidad'       => $item['cantidad'],
+                'costo_unitario' => $item['costo_unitario'],
+                'subtotal'       => $item['subtotal']
+            ];
+        }
+
         $contador_oc = 1;
         foreach ($ordenes_por_proveedor as $prov_id => $materiales_prov) {
-            $numero_orden = 'OC-' . $numero_cotizacion . '-' . $contador_oc;
+            $numero_orden = 'OC-' . $cot['numero_cotizacion'] . '-' . $contador_oc;
             $total_oc = array_sum(array_column($materiales_prov, 'subtotal'));
 
             $sql_oc = "INSERT INTO ordenes_compra (numero_orden, cotizacion_id, proveedor_id, fecha_orden, estado, total_orden) 
                        VALUES (?, ?, ?, ?, 'PENDIENTE', ?)";
             
             $stmt_oc = $pdo->prepare($sql_oc);
-            $stmt_oc->execute([$numero_orden, $cotizacion_id, $prov_id, $fecha_cotizacion, $total_oc]);
+            $stmt_oc->execute([$numero_orden, $cotizacion_id, $prov_id, $cot['fecha_cotizacion'], $total_oc]);
             $orden_compra_id = $pdo->lastInsertId();
 
             $sql_oc_det = "INSERT INTO orden_compra_detalles (orden_compra_id, descripcion, unidad, cantidad_solicitada, costo_unitario, subtotal) 
@@ -171,15 +212,16 @@ if ($accion === 'guardar') {
             $contador_oc++;
         }
 
+        // Actualizar estado de la cotización
+        $stmtUp = $pdo->prepare("UPDATE cotizaciones SET estado = 'CONVERTIDA A ORDEN' WHERE id = ?");
+        $stmtUp->execute([$cotizacion_id]);
+
         $pdo->commit();
-        echo json_encode([
-            'success' => true, 
-            'message' => '¡Cotización #' . $numero_cotizacion . ' y Órdenes de Compra generadas con éxito!'
-        ]);
+        echo json_encode(['success' => true, 'message' => '¡Órdenes de compra generadas con éxito!']);
 
     } catch (Exception $e) {
         $pdo->rollBack();
-        echo json_encode(['success' => false, 'message' => 'Error BD: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error al generar órdenes: ' . $e->getMessage()]);
     }
     exit;
 }

@@ -6,6 +6,7 @@ error_reporting(E_ALL);
 
 session_start();
 require_once '../config/conexion.php';
+
 if (!isset($_SESSION['usuario_id'])) {
     header('Location: login.php');
     exit;
@@ -88,9 +89,18 @@ try {
         <a href="cotizaciones.php" class="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition shadow-xs">
             <i class="fa-solid fa-arrow-left me-1"></i> Volver al Módulo
         </a>
-        <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition shadow-md flex items-center gap-2">
-            <i class="fa-solid fa-print"></i> Imprimir / Guardar PDF
-        </button>
+        
+        <div class="flex gap-2">
+            <?php if (empty($ordenes_compra)): ?>
+            <button onclick="generarOrdenes(<?php echo $cotizacion_id; ?>)" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition shadow-md flex items-center gap-2">
+                <i class="fa-solid fa-file-invoice-dollar"></i> Generar Órdenes de Compra
+            </button>
+            <?php endif; ?>
+
+            <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition shadow-md flex items-center gap-2">
+                <i class="fa-solid fa-print"></i> Imprimir / Guardar PDF
+            </button>
+        </div>
     </div>
 
     <!-- DOCUMENTO PRINCIPAL: COTIZACIÓN -->
@@ -174,7 +184,7 @@ try {
 
     <!-- DOCUMENTOS ADJUNTOS: ÓRDENES DE COMPRA POR PROVEEDOR -->
     <?php foreach ($ordenes_compra as $oc): 
-        // Obtener detalles de esta orden de compra específica
+        // Obtener detalles de esta orden de compra específica de manera segura con ->
         $stmtOcDet = $pdo->prepare("SELECT * FROM orden_compra_detalles WHERE orden_compra_id = ?");
         $stmtOcDet->execute([$oc['id']]);
         $oc_detalles = $stmtOcDet->fetchAll(PDO::FETCH_ASSOC);
@@ -230,5 +240,28 @@ try {
     </div>
     <?php endforeach; ?>
 
+    <!-- Script JavaScript para activar la generación manual -->
+    <script>
+    function generarOrdenes(id) {
+        if (!confirm('¿Desea generar las órdenes de compra para los proveedores con los materiales de esta cotización?')) return;
+
+        fetch(`../api/cotizaciones.php?accion=generar_ordenes&id=${id}`, {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Error de conexión con el servidor.');
+        });
+    }
+    </script>
 </body>
 </html>
