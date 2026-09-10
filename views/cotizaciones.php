@@ -254,12 +254,27 @@ try {
 
         function cargarProveedores() {
             return fetch('../api/cotizaciones.php?accion=listar_proveedores')
-                .then(res => res.json())
                 .then(res => {
-                    if (res.success) proveedoresGlobal = res.data;
+                    // Validar si la respuesta es texto plano o HTML con error en vez de JSON
+                    const contentType = res.headers.get("content-type");
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        return res.json();
+                    } else {
+                        throw new Error("La respuesta del servidor no es un JSON válido.");
+                    }
+                })
+                .then(res => {
+                    if (res && res.success) {
+                        proveedoresGlobal = res.data;
+                    } else {
+                        proveedoresGlobal = [];
+                    }
+                })
+                .catch(err => {
+                    console.warn('Aviso al cargar proveedores:', err);
+                    proveedoresGlobal = []; // Evita que se caiga la promesa
                 });
         }
-
         function renderizarTablaCotizaciones(cotizaciones) {
             let html = cotizaciones.length === 0 ? '<tr><td colspan="8" class="text-center py-6 text-slate-400">No hay cotizaciones registradas</td></tr>' : '';
             cotizaciones.forEach(c => {
