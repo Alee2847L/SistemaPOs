@@ -2,6 +2,9 @@
 // api/cotizaciones.php
 session_start();
 require_once '../config/conexion.php';
+
+// Limpiar cualquier salida previa para evitar errores de sintaxis JSON
+if (ob_get_length()) ob_clean();
 header('Content-Type: application/json; charset=utf-8');
 
 // Validar que exista la sesión del usuario
@@ -13,28 +16,6 @@ if (!isset($_SESSION['usuario_id'])) {
 $accion = $_REQUEST['accion'] ?? '';
 $rolUsuario = $_SESSION['usuario_rol'] ?? 'vendedor';
 
-// Limpiar cualquier salida previa para evitar errores de sintaxis JSON
-if (ob_get_length()) ob_clean();
-header('Content-Type: application/json; charset=utf-8');
-
-if (!isset($_SESSION['usuario_id'])) {
-    echo json_encode(['success' => false, 'message' => 'No autorizado']);
-    exit;
-}
-
-$accion = $_REQUEST['accion'] ?? '';
-
-// --- 5. LISTAR PROVEEDORES ---
-if ($accion === 'listar_proveedores') {
-    try {
-        $stmt = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
-        $proveedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        echo json_encode(['success' => true, 'data' => $proveedores]);
-    } catch (PDOException $e) {
-        echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
-    }
-    exit;
-}
 // --- 1. LISTAR COTIZACIONES ---
 if ($accion === 'listar') {
     try {
@@ -67,7 +48,7 @@ if ($accion === 'obtener') {
 
         $stmtDet = $pdo->prepare("SELECT * FROM cotizacion_detalles WHERE cotizacion_id = ?");
         $stmtDet->execute([$id]);
-        $detalles = $stmtDet.fetchAll(PDO::FETCH_ASSOC);
+        $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
 
         echo json_encode(['success' => true, 'cotizacion' => $cotizacion, 'detalles' => $detalles]);
     } catch (PDOException $e) {
@@ -76,8 +57,55 @@ if ($accion === 'obtener') {
     exit;
 }
 
-// --- 3. GENERAR ÓRDENES DE COMPRA AGRUPADAS POR PROVEEDOR ---
-        // Agrupar los materiales por proveedor_id
+// --- 3. GUARDAR / CREAR COTIZACIÓN Y ÓRDENES DE COMPRA ---
+if ($accion === 'guardar') {
+    $input = json_decode(file_get_contents('php://input'), true);
+
+    if (!$input) {
+        echo json_encode(['success' => false, 'message' => 'No se recibieron datos válidos.']);
+        exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmtNum = $pdo->query("SELECT MAX(numero_cotizacion) as ultimo FROM cotizaciones");
+        $rowNum = $stmtNum->fetch(PDO::FETCH_ASSOC);
+        $numero_cotizacion = ($rowNum['ultimo'] ?? 429) + 1;
+
+        $fecha_cotizacion       = $input['fecha_cotizacion'] ?? date('Y-m-d');
+        $cliente_nombre         = trim($input['cliente_nombre'] ?? '');
+        $cliente_rtn            = trim($input['cliente_rtn'] ?? '');
+        $proyecto_nombre        = trim($input['proyecto_nombre'] ?? '');
+        $clasificacion_proyecto = trim($input['clasificacion_proyecto'] ?? '');
+        $ancho                  = floatval($input['ancho'] ?? 0);
+        $longitud               = floatval($input['longitud'] ?? 0);
+        $subtotal_general       = floatval($input['subtotal_general'] ?? 0);
+        $total_general          = floatval($input['total_general'] ?? 0);
+
+        if (empty($cliente_nombre) || empty($proyecto_nombre)) {
+            echo json_encode(['success' => false, 'message' => 'El nombre del cliente y el proyecto son obligatorios']);
+            exit;
+        }
+
+        // Insertar Cotización principal
+        $sql_cot = "INSERT INTO cotizaciones (numero_cotizacion, fecha_cotizacion, cliente_nombre, cliente_rtn, proyecto_nombre, clasificacion_proyecto, ancho, longitud, subtotal_general, total_general, estado, usuario_creacion) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GUARDADA', ?)";
+        
+        $stmt_cot = $pdo->prepare($sql_cot);
+        $stmt_cot->execute([
+            $numero_cotizacion, $fecha_cotizacion, $cliente_nombre, $cliente_rtn, 
+            $proyecto_nombre, $clasificacion_proyecto, $ancho, $longitud, 
+            $subtotal_general, $total_general, $_SESSION['usuario_id']
+        ]);
+        
+        $cotizacion_id = $pdo->lastInsertId();
+
+        // Insertar Detalles
+        $sql_det = "INSERT INTO cotizacion_detalles (cotizacion_id, tipo_item, descripcion, unidad, cantidad, costo_unitario, margen_porcentaje, subtotal, total_con_margen) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $stmt_det = $pdo->prepare($sql_det);
+
         $ordenes_por_proveedor = [];
 
         foreach ($input['detalles'] as $item) {
@@ -87,7 +115,7 @@ if ($accion === 'obtener') {
             $cantidad       = floatval($item['cantidad']);
             $costo_unitario = floatval($item['costo_unitario']);
             $margen         = floatval($item['margen_porcentaje']);
-            $proveedor_id   = intval($item['proveedor_id'] ?? 1); // Proveedor asociado al producto
+            $proveedor_id   = intval($item['proveedor_id'] ?? 0);
             
             $subtotal_linea = $cantidad * $costo_unitario;
             $total_linea_margen = $subtotal_linea * (1 + ($margen / 100));
@@ -98,8 +126,8 @@ if ($accion === 'obtener') {
                 $cantidad, $costo_unitario, $margen, $subtotal_linea, $total_linea_margen
             ]);
 
-            // Si es un material, lo agrupamos para las órdenes de compra a proveedores
-            if ($tipo_item === 'MATERIAL') {
+            // Si es un material con proveedor, lo agrupamos para las órdenes de compra
+            if ($tipo_item === 'MATERIAL' && $proveedor_id > 0) {
                 if (!isset($ordenes_por_proveedor[$proveedor_id])) {
                     $ordenes_por_proveedor[$proveedor_id] = [];
                 }
@@ -142,6 +170,19 @@ if ($accion === 'obtener') {
             }
             $contador_oc++;
         }
+
+        $pdo->commit();
+        echo json_encode([
+            'success' => true, 
+            'message' => '¡Cotización #' . $numero_cotizacion . ' y Órdenes de Compra generadas con éxito!'
+        ]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Error BD: ' . $e->getMessage()]);
+    }
+    exit;
+}
 
 // --- 4. ELIMINAR COTIZACIÓN ---
 if ($accion === 'eliminar') {
