@@ -100,9 +100,9 @@ try {
         </div>
     </main>
 
-    <!-- MODAL FORMULARIO DE COTIZACIÓN (Amplio para materiales y mano de obra) -->
+    <!-- MODAL FORMULARIO DE COTIZACIÓN -->
     <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto" id="modalCotizacion" style="display: none;">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col my-8">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl overflow-hidden flex flex-col my-8">
             <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <h4 class="font-bold text-slate-900 text-base" id="modalTitulo">Nueva Cotización de Proyecto</h4>
                 <button type="button" onclick="cerrarModalCotizacion()" class="text-slate-400 hover:text-slate-600 p-1"><i class="fa-solid fa-xmark"></i></button>
@@ -169,14 +169,15 @@ try {
                             <table class="w-full text-left border-collapse text-xs">
                                 <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold">
                                     <tr>
-                                        <th class="py-2.5 px-3">Tipo</th>
-                                        <th class="py-2.5 px-3">Descripción</th>
-                                        <th class="py-2.5 px-3">Unidad</th>
-                                        <th class="py-2.5 px-3">Cantidad</th>
-                                        <th class="py-2.5 px-3">Costo Unit. (L.)</th>
-                                        <th class="py-2.5 px-3">Margen %</th>
-                                        <th class="py-2.5 px-3">Total con Margen</th>
-                                        <th class="py-2.5 px-3 text-center">X</th>
+                                        <th class="py-2.5 px-3" style="width: 10%;">Tipo</th>
+                                        <th class="py-2.5 px-3" style="width: 25%;">Descripción</th>
+                                        <th class="py-2.5 px-3" style="width: 20%;">Proveedor (Material)</th>
+                                        <th class="py-2.5 px-3" style="width: 10%;">Unidad</th>
+                                        <th class="py-2.5 px-3" style="width: 10%;">Cantidad</th>
+                                        <th class="py-2.5 px-3" style="width: 10%;">Costo Unit.</th>
+                                        <th class="py-2.5 px-3" style="width: 8%;">Margen %</th>
+                                        <th class="py-2.5 px-3" style="width: 10%;">Total Margen</th>
+                                        <th class="py-2.5 px-3 text-center" style="width: 5%;">X</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tablaDetalles" class="divide-y divide-slate-100 bg-white">
@@ -186,16 +187,9 @@ try {
                         </div>
                     </div>
 
-                    <!-- Pie de Totales y Proveedor -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <div>
-                            <label class="block font-semibold text-xs text-slate-600 mb-1">Proveedor Destino (Para Orden de Compra):</label>
-                            <select id="cot_proveedor_id" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm">
-                                <option value="1">Ferretería y Suministros J.A.</option>
-                                <option value="2">Distribuciones de Construcción S.A.</option>
-                            </select>
-                        </div>
-                        <div class="text-right sm:text-right">
+                    <!-- Pie de Totales -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-end items-center">
+                        <div class="text-right">
                             <p class="text-xs text-slate-500 font-medium">Subtotal Sin Margen: <span class="font-bold text-slate-700" id="lblSubtotal">L. 0.00</span></p>
                             <p class="text-base font-extrabold text-slate-900 mt-0.5">Total General: <span class="text-blue-600" id="lblTotalGeneral">L. 0.00</span></p>
                         </div>
@@ -203,7 +197,7 @@ try {
 
                     <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
                         <button type="button" class="px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl text-sm" onclick="cerrarModalCotizacion()">Cancelar</button>
-                        <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition">Guardar Cotización y Orden</button>
+                        <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition">Guardar Cotización y Órdenes</button>
                     </div>
                 </form>
             </div>
@@ -239,10 +233,12 @@ try {
     <script>
         const esAdmin = <?php echo $es_admin ? 'true' : 'false'; ?>;
         let listaCotizacionesOriginal = [];
+        let proveedoresGlobal = [];
 
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('txtClaveAdminCot').addEventListener('keydown', (e) => { if(e.key === 'Enter') ejecutarEliminacionCotizacion(); });
             cargarCotizaciones();
+            cargarProveedores();
         });
 
         function cargarCotizaciones() {
@@ -253,6 +249,14 @@ try {
                         listaCotizacionesOriginal = res.data;
                         renderizarTablaCotizaciones(res.data);
                     }
+                });
+        }
+
+        function cargarProveedores() {
+            return fetch('../api/cotizaciones.php?accion=listar_proveedores')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) proveedoresGlobal = res.data;
                 });
         }
 
@@ -278,7 +282,8 @@ try {
             document.getElementById('tablaCotizaciones').innerHTML = html;
         }
 
-        function abrirModalNuevaCotizacion() {
+        async function abrirModalNuevaCotizacion() {
+            await cargarProveedores();
             document.getElementById('modalTitulo').innerText = 'Nueva Cotización de Proyecto';
             document.getElementById('cot_id').value = '';
             document.getElementById('formCotizacion').reset();
@@ -307,13 +312,25 @@ try {
             const cantidad = item ? item.cantidad : 1;
             const costo = item ? item.costo_unitario : 0.00;
             const margen = item ? item.margen_porcentaje : 20.00;
+            const proveedorActualId = item ? item.proveedor_id : '';
+
+            let opcionesProveedores = '<option value="">Seleccione proveedor...</option>';
+            proveedoresGlobal.forEach(p => {
+                const selected = (String(p.id) === String(proveedorActualId)) ? 'selected' : '';
+                opcionesProveedores += `<option value="${p.id}" ${selected}>${p.nombre_empresa}</option>`;
+            });
+
+            const proveedorHtml = isMaterial 
+                ? `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs proveedor-id" required>${opcionesProveedores}</select>`
+                : `<span class="text-slate-400 text-[10px] italic">N/A (Mano Obra)</span><input type="hidden" class="proveedor-id" value="0">`;
 
             row.innerHTML = `
                 <td class="py-2.5 px-3">
-                    <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${badgeClass} tipo-badge">${tipo}</span>
+                    <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${badgeClass}">${tipo}</span>
                     <input type="hidden" class="tipo_item" value="${tipo}">
                 </td>
                 <td class="py-2.5 px-3"><input type="text" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs descripcion" value="${descripcion}" placeholder="Descripción" required></td>
+                <td class="py-2.5 px-3">${proveedorHtml}</td>
                 <td class="py-2.5 px-3"><input type="text" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs unidad" value="${unidad}" required></td>
                 <td class="py-2.5 px-3"><input type="number" step="0.0001" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs cantidad" value="${cantidad}" oninput="calcularTotalesModal()"></td>
                 <td class="py-2.5 px-3"><input type="number" step="0.01" class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs costo" value="${costo}" oninput="calcularTotalesModal()"></td>
@@ -357,16 +374,31 @@ try {
             }
 
             let detalles = [];
+            let errorProveedor = false;
+
             filas.forEach(fila => {
+                const tipoItem = fila.querySelector('.tipo_item').value;
+                const proveedorId = fila.querySelector('.proveedor-id').value;
+
+                if (tipoItem === 'MATERIAL' && (!proveedorId || proveedorId === '')) {
+                    errorProveedor = true;
+                }
+
                 detalles.push({
-                    tipo_item: fila.querySelector('.tipo_item').value,
+                    tipo_item: tipoItem,
                     descripcion: fila.querySelector('.descripcion').value,
+                    proveedor_id: proveedorId,
                     unidad: fila.querySelector('.unidad').value,
                     cantidad: parseFloat(fila.querySelector('.cantidad').value),
                     costo_unitario: parseFloat(fila.querySelector('.costo').value),
                     margen_porcentaje: parseFloat(fila.querySelector('.margen').value)
                 });
             });
+
+            if (errorProveedor) {
+                alert('Todos los materiales deben tener un proveedor seleccionado.');
+                return;
+            }
 
             const data = {
                 fecha_cotizacion: document.getElementById('cot_fecha').value,
@@ -378,7 +410,6 @@ try {
                 longitud: parseFloat(document.getElementById('cot_longitud').value) || 0,
                 subtotal_general: parseFloat(document.getElementById('lblSubtotal').textContent.replace('L. ', '')),
                 total_general: parseFloat(document.getElementById('lblTotalGeneral').textContent.replace('L. ', '')),
-                proveedor_id_default: document.getElementById('cot_proveedor_id').value,
                 detalles: detalles
             };
 
@@ -402,7 +433,8 @@ try {
             }
         });
 
-        function verCotizacion(id) {
+        async function verCotizacion(id) {
+            await cargarProveedores();
             fetch(`../api/cotizaciones.php?accion=obtener&id=${id}`)
                 .then(res => res.json())
                 .then(res => {

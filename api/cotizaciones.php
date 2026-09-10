@@ -54,59 +54,9 @@ if ($accion === 'obtener') {
     exit;
 }
 
-// --- 3. GUARDAR / CREAR COTIZACIÓN Y ORDEN DE COMPRA ---
-if ($accion === 'guardar') {
-    $input = json_decode(file_get_contents('php://input'), true);
-
-    if (!$input) {
-        echo json_encode(['success' => false, 'message' => 'No se recibieron datos válidos.']);
-        exit;
-    }
-
-    try {
-        $pdo->beginTransaction();
-
-        // Obtener número de cotización automático o manual
-        $stmtNum = $pdo->query("SELECT MAX(numero_cotizacion) as ultimo FROM cotizaciones");
-        $rowNum = $stmtNum->fetch(PDO::FETCH_ASSOC);
-        $numero_cotizacion = ($rowNum['ultimo'] ?? 429) + 1;
-
-        $fecha_cotizacion       = $input['fecha_cotizacion'] ?? date('Y-m-d');
-        $cliente_nombre         = trim($input['cliente_nombre'] ?? '');
-        $cliente_rtn            = trim($input['cliente_rtn'] ?? '');
-        $cliente_telefono       = trim($input['cliente_telefono'] ?? '');
-        $proyecto_nombre        = trim($input['proyecto_nombre'] ?? '');
-        $clasificacion_proyecto = trim($input['clasificacion_proyecto'] ?? '');
-        $ancho                  = floatval($input['ancho'] ?? 0);
-        $longitud               = floatval($input['longitud'] ?? 0);
-        $subtotal_general       = floatval($input['subtotal_general'] ?? 0);
-        $total_general          = floatval($input['total_general'] ?? 0);
-        $proveedor_id_default   = intval($input['proveedor_id_default'] ?? 1);
-
-        if (empty($cliente_nombre) || empty($proyecto_nombre)) {
-            echo json_encode(['success' => false, 'message' => 'El nombre del cliente y el proyecto son obligatorios']);
-            exit;
-        }
-
-        // Insertar Cotización principal
-        $sql_cot = "INSERT INTO cotizaciones (numero_cotizacion, fecha_cotizacion, cliente_nombre, cliente_rtn, cliente_telefono, proyecto_nombre, clasificacion_proyecto, ancho, longitud, subtotal_general, total_general, estado, usuario_creacion) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GUARDADA', ?)";
-        
-        $stmt_cot = $pdo->prepare($sql_cot);
-        $stmt_cot->execute([
-            $numero_cotizacion, $fecha_cotizacion, $cliente_nombre, $cliente_rtn, 
-            $cliente_telefono, $proyecto_nombre, $clasificacion_proyecto, 
-            $ancho, $longitud, $subtotal_general, $total_general, $_SESSION['usuario_id']
-        ]);
-        
-        $cotizacion_id = $pdo->lastInsertId();
-
-        // Insertar Detalles
-        $sql_det = "INSERT INTO cotizacion_detalles (cotizacion_id, tipo_item, descripcion, unidad, cantidad, costo_unitario, margen_porcentaje, subtotal, total_con_margen) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt_det = $pdo->prepare($sql_det);
-
-        $materiales_para_orden = [];
+// --- 3. GENERAR ÓRDENES DE COMPRA AGRUPADAS POR PROVEEDOR ---
+        // Agrupar los materiales por proveedor_id
+        $ordenes_por_proveedor = [];
 
         foreach ($input['detalles'] as $item) {
             $tipo_item      = $item['tipo_item']; // 'MATERIAL' o 'MANO_OBRA'
@@ -115,18 +65,23 @@ if ($accion === 'guardar') {
             $cantidad       = floatval($item['cantidad']);
             $costo_unitario = floatval($item['costo_unitario']);
             $margen         = floatval($item['margen_porcentaje']);
+            $proveedor_id   = intval($item['proveedor_id'] ?? 1); // Proveedor asociado al producto
             
             $subtotal_linea = $cantidad * $costo_unitario;
             $total_linea_margen = $subtotal_linea * (1 + ($margen / 100));
 
+            // Guardar detalle de la cotización
             $stmt_det->execute([
                 $cotizacion_id, $tipo_item, $descripcion, $unidad, 
                 $cantidad, $costo_unitario, $margen, $subtotal_linea, $total_linea_margen
             ]);
 
-            // Acumular si es material para la orden de compra automática
+            // Si es un material, lo agrupamos para las órdenes de compra a proveedores
             if ($tipo_item === 'MATERIAL') {
-                $materiales_para_orden[] = [
+                if (!isset($ordenes_por_proveedor[$proveedor_id])) {
+                    $ordenes_por_proveedor[$proveedor_id] = [];
+                }
+                $ordenes_por_proveedor[$proveedor_id][] = [
                     'descripcion'    => $descripcion,
                     'unidad'         => $unidad,
                     'cantidad'       => $cantidad,
@@ -136,23 +91,24 @@ if ($accion === 'guardar') {
             }
         }
 
-        // Generar Orden de Compra Automática para Proveedores
-        if (count($materiales_para_orden) > 0) {
-            $numero_orden = 'OC-' . $numero_cotizacion;
-            $total_oc = array_sum(array_column($materiales_para_orden, 'subtotal'));
+        // Crear una Orden de Compra por cada Proveedor único encontrado
+        $contador_oc = 1;
+        foreach ($ordenes_por_proveedor as $prov_id => $materiales_prov) {
+            $numero_orden = 'OC-' . $numero_cotizacion . '-' . $contador_oc;
+            $total_oc = array_sum(array_column($materiales_prov, 'subtotal'));
 
             $sql_oc = "INSERT INTO ordenes_compra (numero_orden, cotizacion_id, proveedor_id, fecha_orden, estado, total_orden) 
                        VALUES (?, ?, ?, ?, 'PENDIENTE', ?)";
             
             $stmt_oc = $pdo->prepare($sql_oc);
-            $stmt_oc->execute([$numero_orden, $cotizacion_id, $proveedor_id_default, $fecha_cotizacion, $total_oc]);
+            $stmt_oc->execute([$numero_orden, $cotizacion_id, $prov_id, $fecha_cotizacion, $total_oc]);
             $orden_compra_id = $pdo->lastInsertId();
 
             $sql_oc_det = "INSERT INTO orden_compra_detalles (orden_compra_id, descripcion, unidad, cantidad_solicitada, costo_unitario, subtotal) 
                            VALUES (?, ?, ?, ?, ?, ?)";
             $stmt_oc_det = $pdo->prepare($sql_oc_det);
 
-            foreach ($materiales_para_orden as $mat) {
+            foreach ($materiales_prov as $mat) {
                 $stmt_oc_det->execute([
                     $orden_compra_id, 
                     $mat['descripcion'], 
@@ -162,21 +118,8 @@ if ($accion === 'guardar') {
                     $mat['subtotal']
                 ]);
             }
+            $contador_oc++;
         }
-
-        $pdo->commit();
-        echo json_encode([
-            'success' => true, 
-            'message' => '¡Cotización #' . $numero_cotizacion . ' guardada y Orden de Compra generada con éxito!',
-            'cotizacion_id' => $cotizacion_id
-        ]);
-
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        echo json_encode(['success' => false, 'message' => 'Error al procesar la cotización: ' . $e->getMessage()]);
-    }
-    exit;
-}
 
 // --- 4. ELIMINAR COTIZACIÓN ---
 if ($accion === 'eliminar') {
@@ -192,6 +135,18 @@ if ($accion === 'eliminar') {
         echo json_encode(['success' => true, 'message' => 'Cotización eliminada con éxito']);
     } catch (PDOException $e) {
         echo json_encode(['success' => false, 'message' => 'No se puede eliminar la cotización porque tiene registros vinculados']);
+    }
+    exit;
+}
+
+// --- 5. LISTAR PROVEEDORES (Para el selector de la orden de compra) ---
+if ($accion === 'listar_proveedores') {
+    try {
+        $stmt = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
+        $proveedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'data' => $proveedores]);
+    } catch (PDOException $e) {
+        echo json_encode(['success' => false, 'message' => 'Error al listar proveedores: ' . $e->getMessage()]);
     }
     exit;
 }
