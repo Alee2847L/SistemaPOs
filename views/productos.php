@@ -24,7 +24,7 @@ try {
 // --- OBTENER PROVEEDORES DESDE LA BD ---
 $proveedores = [];
 try {
-    $stmt_prov = $pdo->query("SELECT id, nombre FROM proveedores ORDER BY nombre ASC");
+    $stmt_prov = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
     $proveedores = $stmt_prov->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 ?>
@@ -174,7 +174,7 @@ try {
                             <select id="prod_proveedor_id" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition">
                                 <option value="">Seleccione un proveedor...</option>
                                 <?php foreach ($proveedores as $prov): ?>
-                                    <option value="<?php echo $prov['id']; ?>"><?php echo htmlspecialchars($prov['nombre']); ?></option>
+                                    <option value="<?php echo $prov['id']; ?>"><?php echo htmlspecialchars($prov['nombre_empresa']); ?></option>
                                 <?php endforeach; ?>
                             </select>
                             <button type="button" onclick="abrirModalNuevoProveedor()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shrink-0 flex items-center gap-1" title="Agregar nuevo proveedor">
@@ -215,7 +215,7 @@ try {
             <div class="p-6">
                 <form id="formNuevoProveedorQuick" class="space-y-4" onsubmit="guardarProveedorRapido(event)">
                     <div>
-                        <label class="block font-semibold text-xs text-slate-600 mb-1">Nombre del Proveedor:</label>
+                        <label class="block font-semibold text-xs text-slate-600 mb-1">Nombre de la Empresa:</label>
                         <input type="text" id="nuevo_prov_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition" required autocomplete="off">
                     </div>
                     <div>
@@ -460,19 +460,19 @@ try {
             if (!nombre) return;
 
             const formData = new FormData();
-            formData.append('accion', 'guardar_rapido'); // O el endpoint que maneje tus proveedores
-            formData.append('nombre', nombre);
+            formData.append('accion', 'guardar_proveedor'); // 👈 Apunta a la acción corregida en el API
+            formData.append('nombre_empresa', nombre);     // 👈 Coincide con la columna de tu base de datos
             formData.append('telefono', telefono);
 
-            // Nota: Cambia '../api/proveedores.php' por el archivo API que procesa los proveedores en tu proyecto
-            fetch('../api/proveedores.php', { method: 'POST', body: formData })
+            // 👈 Apunta correctamente a tu API de productos centralizada
+            fetch('../api/productos.php', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
                     const select = document.getElementById('prod_proveedor_id');
                     const nuevaOpcion = document.createElement('option');
                     nuevaOpcion.value = data.id;
-                    nuevaOpcion.text = nombre;
+                    nuevaOpcion.text = data.nombre_empresa;
                     select.appendChild(nuevaOpcion);
                     select.value = data.id; // Autoseleccionar el nuevo proveedor creado
 
