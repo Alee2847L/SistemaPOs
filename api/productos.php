@@ -11,10 +11,14 @@ if (!isset($_SESSION['usuario_id'])) {
 
 $accion = $_POST['accion'] ?? $_GET['accion'] ?? '';
 $rolUsuario = $_SESSION['usuario_rol'] ?? 'vendedor';
+$es_admin = (strtolower($rolUsuario) === 'admin' || strtolower($rolUsuario) === 'administrador');
 
 // --- 1. LISTAR PRODUCTOS ---
 if ($accion === 'listar') {
-    $stmt = $pdo->query("SELECT * FROM productos ORDER BY id DESC");
+    $stmt = $pdo->query("SELECT p.*, pr.nombre_empresa AS proveedor_nombre 
+                         FROM productos p 
+                         LEFT JOIN proveedores pr ON p.proveedor_id = pr.id 
+                         ORDER BY p.id DESC");
     $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     echo json_encode([
@@ -60,9 +64,62 @@ if ($accion === 'buscar_exacto') {
     exit;
 }
 
-// --- 4. GUARDAR LOTE DE MERCADERÍA CON TRAZABILIDAD ---
+// --- 4. OBTENER PROVEEDORES VINCULADOS A UN PRODUCTO (MÚLTIPLES) ---
+if ($accion === 'obtener_proveedores_producto') {
+    $producto_id = intval($_GET['producto_id'] ?? 0);
+    try {
+        $stmt = $pdo->prepare("SELECT p.id, p.nombre_empresa, pp.precio 
+                             FROM proveedores p
+                             JOIN producto_proveedor pp ON p.id = pp.proveedor_id
+                             WHERE pp.producto_id = ?
+                             ORDER BY p.nombre_empresa ASC");
+        $stmt->execute([$producto_id]);
+        $proveedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'data' => $proveedores]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Error al obtener proveedores del producto: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// --- 5. AGREGAR UN PROVEEDOR EXTRA A UN PRODUCTO (TABLA INTERMEDIA) ---
+if ($accion === 'agregar_proveedor_producto') {
+    if (!$es_admin) {
+        echo json_encode(['success' => false, 'message' => 'Acceso denegado: Se requiere rol de administrador.']);
+        exit;
+    }
+
+    $producto_id = intval($_POST['producto_id'] ?? 0);
+    $proveedor_id = intval($_POST['proveedor_id'] ?? 0);
+    $precio = floatval($_POST['precio'] ?? 0);
+
+    if ($producto_id && $proveedor_id) {
+        try {
+            $stmt_check = $pdo->prepare("SELECT id FROM producto_proveedor WHERE producto_id = ? AND proveedor_id = ?");
+            $stmt_check->execute([$producto_id, $proveedor_id]);
+            
+            if ($stmt_check->fetch()) {
+                // Actualizar precio si ya estaba vinculado
+                $stmt_upd = $pdo->prepare("UPDATE producto_proveedor SET precio = ? WHERE producto_id = ? AND proveedor_id = ?");
+                $stmt_upd->execute([$precio, $producto_id, $proveedor_id]);
+                echo json_encode(['success' => true, 'message' => 'Asociación de proveedor actualizada correctamente.']);
+            } else {
+                $stmt_ins = $pdo->prepare("INSERT INTO producto_proveedor (producto_id, proveedor_id, precio) VALUES (?, ?, ?)");
+                $stmt_ins->execute([$producto_id, $proveedor_id, $precio]);
+                echo json_encode(['success' => true, 'message' => 'Proveedor vinculado correctamente al producto.']);
+            }
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'Error al vincular el proveedor: ' . $e->getMessage()]);
+        }
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Datos incompletos para la vinculación.']);
+    }
+    exit;
+}
+
+// --- 6. GUARDAR LOTE DE MERCADERÍA CON TRAZABILIDAD ---
 if ($accion === 'guardar_lote') {
-    if ($rolUsuario !== 'admin') {
+    if (!$es_admin) {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado: Solo el administrador puede agregar lotes.']);
         exit;
     }
@@ -146,9 +203,9 @@ if ($accion === 'guardar_lote') {
     exit;
 }
 
-// --- 5. GUARDAR INDIVIDUAL (Con soporte para Proveedor) ---
+// --- 7. GUARDAR INDIVIDUAL (Con soporte para Proveedor y Tabla Intermedia) ---
 if ($accion === 'guardar') {
-    if ($rolUsuario !== 'admin') {
+    if (!$es_admin) {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
         exit;
     }
@@ -173,8 +230,8 @@ if ($accion === 'guardar') {
         $mensajeRespuesta = '';
 
         if (!empty($id)) {
-            $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = ? WHERE id = ?");
-            $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $id]);
+            $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, proveedor_id = ?, precio_compra = ?, precio_venta = ?, stock = ? WHERE id = ?");
+            $stmt->execute([$codigo_barra, $nombre, $proveedor_id, $precio_compra, $precio_venta, $stock, $id]);
             $productoIdFinal = intval($id);
             $mensajeRespuesta = 'Producto actualizado correctamente';
         } else {
@@ -184,17 +241,18 @@ if ($accion === 'guardar') {
 
             if ($existente) {
                 $productoIdFinal = intval($existente['id']);
-                $stmt = $pdo->prepare("UPDATE productos SET nombre = ?, precio_compra = ?, precio_venta = ?, stock = stock + ? WHERE id = ?");
-                $stmt->execute([$nombre, $precio_compra, $precio_venta, $stock, $productoIdFinal]);
+                $stmt = $pdo->prepare("UPDATE productos SET nombre = ?, proveedor_id = ?, precio_compra = ?, precio_venta = ?, stock = stock + ? WHERE id = ?");
+                $stmt->execute([$nombre, $proveedor_id, $precio_compra, $precio_venta, $stock, $productoIdFinal]);
                 $mensajeRespuesta = 'Producto existente encontrado: stock actualizado correctamente.';
             } else {
-                $stmt = $pdo->prepare("INSERT INTO productos (codigo_barra, nombre, precio_compra, precio_venta, stock) VALUES (?, ?, ?, ?, ?)");
-                $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock]);
+                $stmt = $pdo->prepare("INSERT INTO productos (codigo_barra, nombre, proveedor_id, precio_compra, precio_venta, stock) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$codigo_barra, $nombre, $proveedor_id, $precio_compra, $precio_venta, $stock]);
                 $productoIdFinal = intval($pdo->lastInsertId());
                 $mensajeRespuesta = 'Producto registrado exitosamente';
             }
         }
 
+        // Sincronización automática con la tabla intermedia de proveedores
         if ($productoIdFinal && $proveedor_id) {
             $stmtProvCheck = $pdo->prepare("SELECT id FROM producto_proveedor WHERE producto_id = ? AND proveedor_id = ?");
             $stmtProvCheck->execute([$productoIdFinal, $proveedor_id]);
@@ -218,9 +276,9 @@ if ($accion === 'guardar') {
     exit;
 }
 
-// --- 6. ELIMINAR PRODUCTO ---
+// --- 8. ELIMINAR PRODUCTO ---
 if ($accion === 'eliminar') {
-    if ($rolUsuario !== 'admin') {
+    if (!$es_admin) {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
         exit;
     }
@@ -259,10 +317,21 @@ if ($accion === 'eliminar') {
 
     if ($id > 0) {
         try {
+            $pdo->beginTransaction();
+
+            // Limpiar dependencias en la tabla intermedia antes de eliminar el producto
+            $stmt_pp = $pdo->prepare("DELETE FROM producto_proveedor WHERE producto_id = ?");
+            $stmt_pp->execute([$id]);
+
             $stmt = $pdo->prepare("DELETE FROM productos WHERE id = ?");
             $stmt->execute([$id]);
+
+            $pdo->commit();
             echo json_encode(['success' => true, 'message' => 'Producto eliminado con éxito']);
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             echo json_encode(['success' => false, 'message' => 'No se puede eliminar el producto porque tiene registros o ventas asociadas']);
         }
     } else {
@@ -271,7 +340,7 @@ if ($accion === 'eliminar') {
     exit;
 }
 
-// --- 7. LISTAR PROVEEDORES PARA EL SELECTOR ---
+// --- 9. LISTAR PROVEEDORES PARA EL SELECTOR ---
 if ($accion === 'listar_proveedores') {
     try {
         $stmt = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
@@ -287,9 +356,9 @@ if ($accion === 'listar_proveedores') {
     exit;
 }
 
-// --- 8. CREAR PROVEEDOR RÁPIDO (Soporta múltiples nombres de acción por seguridad) ---
+// --- 10. CREAR PROVEEDOR RÁPIDO (Soporta múltiples nombres de acción por seguridad) ---
 if (in_array($accion, ['guardar_proveedor', 'crear_proveedor', 'registrar_proveedor'])) {
-    if ($rolUsuario !== 'admin') {
+    if (!$es_admin) {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
         exit;
     }

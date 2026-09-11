@@ -168,8 +168,10 @@ try {
                         <label class="block font-semibold text-xs text-slate-600 mb-1">Nombre del Producto:</label>
                         <input type="text" id="prod_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition" required>
                     </div>
-                    <div>
-                        <label class="block font-semibold text-xs text-slate-600 mb-1">Proveedor:</label>
+                    
+                    <!-- Campo de Proveedores Principal / Selección -->
+                    <div id="seccion_proveedor_principal">
+                        <label class="block font-semibold text-xs text-slate-600 mb-1">Proveedor Principal:</label>
                         <div class="flex gap-2">
                             <select id="prod_proveedor_id" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition">
                                 <option value="">Seleccione un proveedor...</option>
@@ -182,6 +184,26 @@ try {
                             </button>
                         </div>
                     </div>
+
+                    <!-- SECCIÓN EXTRA PARA MÚLTIPLES PROVEEDORES EN MODO EDICIÓN -->
+                    <div id="seccion_multiples_proveedores" class="hidden bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                        <label class="block font-semibold text-xs text-slate-700">🔗 Proveedores adicionales para este producto:</label>
+                        <div id="lista_proveedores_actuales" class="text-xs text-slate-600 space-y-1">
+                            <!-- Se llena dinámicamente -->
+                        </div>
+                        <div class="flex gap-2 pt-2 border-t border-slate-200">
+                            <select id="select_nuevo_proveedor_extra" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none">
+                                <option value="">Añadir otro proveedor...</option>
+                                <?php foreach ($proveedores as $prov): ?>
+                                    <option value="<?php echo $prov['id']; ?>"><?php echo htmlspecialchars($prov['nombre_empresa']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="button" onclick="vincularProveedorExtra()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition shrink-0">
+                                Vincular
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block font-semibold text-xs text-slate-600 mb-1">Precio Compra (L.):</label>
@@ -322,7 +344,6 @@ try {
         let esModoEdicionDirecta = false; 
         let esSumarStockExistente = false;  
         let vieneDesdeLote = false;
-
         let loteMercaderia = [];
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -460,11 +481,10 @@ try {
             if (!nombre) return;
 
             const formData = new FormData();
-            formData.append('accion', 'guardar_proveedor'); // 👈 Apunta a la acción corregida en el API
-            formData.append('nombre_empresa', nombre);     // 👈 Coincide con la columna de tu base de datos
+            formData.append('accion', 'guardar_proveedor');
+            formData.append('nombre_empresa', nombre);
             formData.append('telefono', telefono);
 
-            // 👈 Apunta correctamente a tu API de productos centralizada
             fetch('../api/productos.php', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
@@ -474,7 +494,16 @@ try {
                     nuevaOpcion.value = data.id;
                     nuevaOpcion.text = data.nombre_empresa;
                     select.appendChild(nuevaOpcion);
-                    select.value = data.id; // Autoseleccionar el nuevo proveedor creado
+                    select.value = data.id; 
+
+                    // Actualizar también el selector extra si está visible
+                    const selectExtra = document.getElementById('select_nuevo_proveedor_extra');
+                    if (selectExtra) {
+                        const opExtra = document.createElement('option');
+                        opExtra.value = data.id;
+                        opExtra.text = data.nombre_empresa;
+                        selectExtra.appendChild(opExtra);
+                    }
 
                     cerrarModalNuevoProveedor();
                 } else {
@@ -679,6 +708,7 @@ try {
             esSumarStockExistente = false;
             document.getElementById('formProducto').reset();
             document.getElementById('prod_id').value = '';
+            document.getElementById('seccion_multiples_proveedores').classList.add('hidden');
             desbloquearFormularioNuevo();
             
             document.getElementById('prod_codigo_barra').value = codigo;
@@ -701,6 +731,7 @@ try {
             esSumarStockExistente = false;
             document.getElementById('formProducto').reset();
             document.getElementById('prod_id').value = '';
+            document.getElementById('seccion_multiples_proveedores').classList.add('hidden');
             desbloquearFormularioNuevo();
             
             const inputStock = document.getElementById('prod_stock');
@@ -737,6 +768,7 @@ try {
             vieneDesdeLote = false;
             esModoEdicionDirecta = true;
             esSumarStockExistente = false;
+            
             fetch(`../api/productos.php?accion=obtener&id=${id}`)
             .then(res => res.json())
             .then(res => {
@@ -755,14 +787,72 @@ try {
                     inputStock.classList.remove('input-bloqueado');
                     
                     bloquearCamposInformacion(false);
-                    document.getElementById('modalTitulo').innerText = 'Editar Producto';
+                    document.getElementById('modalTitulo').innerText = 'Editar Producto y Proveedores';
                     document.getElementById('lbl_prod_stock').innerText = 'Stock Actual:';
                     document.getElementById('prod_stock').placeholder = '';
+
+                    // Mostrar sección para añadir más proveedores asociados
+                    document.getElementById('seccion_multiples_proveedores').classList.remove('hidden');
+                    cargarProveedoresAsociados(p.id);
 
                     document.getElementById('modalProducto').style.display = 'flex';
                 } else {
                     alert(res.message);
                 }
+            });
+        }
+
+        function cargarProveedoresAsociados(productoId) {
+            const contenedor = document.getElementById('lista_proveedores_actuales');
+            contenedor.innerHTML = '<span class="text-slate-400">Cargando proveedores vinculados...</span>';
+
+            fetch(`../api/productos.php?accion=obtener_proveedores_producto&producto_id=${productoId}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data.length > 0) {
+                    let html = '';
+                    res.data.forEach(prov => {
+                        html += `<div class="flex items-center justify-between bg-white px-2.5 py-1 rounded border border-slate-200">
+                            <span><i class="fa-solid fa-check text-emerald-600 mr-1"></i> ${escapeHtml(prov.nombre_empresa)}</span>
+                        </div>`;
+                    });
+                    contenedor.innerHTML = html;
+                } else {
+                    contenedor.innerHTML = '<span class="text-slate-400 italic">No hay proveedores adicionales vinculados.</span>';
+                }
+            })
+            .catch(() => {
+                contenedor.innerHTML = '<span class="text-rose-500">Error al cargar proveedores.</span>';
+            });
+        }
+
+        function vincularProveedorExtra() {
+            const productoId = document.getElementById('prod_id').value;
+            const proveedorId = document.getElementById('select_nuevo_proveedor_extra').value;
+
+            if (!proveedorId) {
+                alert('Selecciona un proveedor para vincular.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('accion', 'agregar_proveedor_producto');
+            formData.append('producto_id', productoId);
+            formData.append('proveedor_id', proveedorId);
+
+            fetch('../api/productos.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    document.getElementById('select_nuevo_proveedor_extra').value = '';
+                    cargarProveedoresAsociados(productoId);
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(() => {
+                alert('Error al conectar con el servidor.');
             });
         }
 
