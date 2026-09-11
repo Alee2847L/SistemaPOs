@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $cambioDevolucion,
             $ventaOriginal['cliente_nombre'] ?? 'Consumidor Final',
             $metodoOriginal,
-            $cambioDevolucion,
+            $cambioentregado,
         ]);
 
         // 6. Verificar si la venta fue a crédito y calcular el valor del contrato (monto_abonado - monto_recibido)
