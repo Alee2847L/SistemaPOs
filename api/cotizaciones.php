@@ -36,13 +36,12 @@ if ($accion === 'listar') {
 // --- 1.1. LISTAR PRODUCTOS CON SUS MÚLTIPLES PROVEEDORES Y PRECIOS ---
 if ($accion === 'listar_productos_proveedores') {
     try {
-        // 1. Obtener todos los productos de la base de datos
-        $stmt = $pdo->query("SELECT id, nombre, unidad, categoria, factor_rendimiento, margen_porcentaje, precio_compra FROM productos");
+        $stmt = $pdo->query("SELECT id, nombre, unidad, TRIM(categoria) as categoria, factor_rendimiento, margen_porcentaje, precio_compra, proveedor_id as proveedor_directo FROM productos");
         $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $resultado = [];
         foreach ($productos as $prod) {
-            // 2. Obtener las ferreterías/proveedores y precios asociados a este producto específico desde la tabla pivote
+            // 1. Buscar en la tabla pivote producto_proveedor
             $stmt_prov = $pdo->prepare("
                 SELECT pp.proveedor_id, p.nombre_empresa, pp.precio 
                 FROM producto_proveedor pp 
@@ -52,19 +51,32 @@ if ($accion === 'listar_productos_proveedores') {
             $stmt_prov->execute([$prod['id']]);
             $proveedores_precios = $stmt_prov->fetchAll(PDO::FETCH_ASSOC);
 
-            // Si no hay proveedores en la tabla pivote, creamos una opción base usando el precio de compra del producto
+            // 2. RESPALDO: Si no hay registros en la tabla pivote pero sí tiene un proveedor_id directo en la tabla productos
+            if (empty($proveedores_precios) && !empty($prod['proveedor_directo'])) {
+                $stmt_dir = $pdo->prepare("SELECT id as proveedor_id, nombre_empresa FROM proveedores WHERE id = ?");
+                $stmt_dir->execute([$prod['proveedor_directo']]);
+                $provDirData = $stmt_dir->fetch(PDO::FETCH_ASSOC);
+
+                if ($provDirData) {
+                    $proveedores_precios[] = [
+                        'proveedor_id' => $provDirData['proveedor_id'],
+                        'nombre_empresa' => $provDirData['nombre_empresa'],
+                        'precio' => floatval($prod['precio_compra'] ?? 0)
+                    ];
+                }
+            }
+
+            // 3. Si de plano no tiene ningún proveedor asignado en ninguna parte
             if (empty($proveedores_precios)) {
-                $precio_base = isset($prod['precio_compra']) ? floatval($prod['precio_compra']) : 0;
                 $proveedores_precios = [
                     [
                         'proveedor_id' => 0,
                         'nombre_empresa' => 'Inventario General / Sin Proveedor',
-                        'precio' => $precio_base
+                        'precio' => floatval($prod['precio_compra'] ?? 0)
                     ]
                 ];
             }
 
-            // Proveedor por defecto (el primero de la lista)
             $proveedor_sugerido_id = $proveedores_precios[0]['proveedor_id'];
             $costo_sugerido = $proveedores_precios[0]['precio'];
 
@@ -72,7 +84,7 @@ if ($accion === 'listar_productos_proveedores') {
                 'id' => $prod['id'],
                 'nombre' => $prod['nombre'],
                 'unidad' => !empty($prod['unidad']) ? $prod['unidad'] : 'Und',
-                'categoria' => !empty(trim($prod['categoria'])) ? trim($prod['categoria']) : 'Construcción',
+                'categoria' => !empty($prod['categoria']) ? $prod['categoria'] : 'Construcción',
                 'factor_rendimiento' => isset($prod['factor_rendimiento']) ? floatval($prod['factor_rendimiento']) : 0.5,
                 'margen_porcentaje' => isset($prod['margen_porcentaje']) ? floatval($prod['margen_porcentaje']) : 20,
                 'proveedor_sugerido_id' => $proveedor_sugerido_id,
