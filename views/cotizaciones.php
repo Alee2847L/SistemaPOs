@@ -243,7 +243,12 @@ try {
         let catalogoProductosGlobal = [];
 
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('txtClaveAdminCot').addEventListener('keydown', (e) => { if(e.key === 'Enter') ejecutarEliminacionCotizacion(); });
+            const inputClave = document.getElementById('txtClaveAdminCot');
+            if(inputClave) {
+                inputClave.addEventListener('keydown', (e) => { 
+                    if(e.key === 'Enter') ejecutarEliminacionCotizacion(); 
+                });
+            }
             cargarCotizaciones();
             cargarCatalogoProductos();
         });
@@ -259,7 +264,6 @@ try {
                 });
         }
 
-        // Carga los productos con sus múltiples proveedores, precios y categorías
         function cargarCatalogoProductos() {
             return fetch('../api/cotizaciones.php?accion=listar_productos_proveedores')
                 .then(res => res.json())
@@ -299,32 +303,25 @@ try {
             document.getElementById('tablaCotizaciones').innerHTML = html;
         }
 
-        async function abrirModalNuevaCotizacion() {
-            await cargarCatalogoProductos();
-            document.getElementById('modalTitulo').innerText = 'Nueva Cotización de Proyecto';
-            document.getElementById('cot_id').value = '';
-            document.getElementById('formCotizacion').reset();
-            document.getElementById('cot_fecha').valueAsDate = new Date();
-            document.getElementById('cot_clasificacion').value = 'Construcción';
-            document.getElementById('tablaDetalles').innerHTML = '';
+        // Declaración global para evitar errores de referencia en el ámbito del documento
+        window.recalcularPorArea = function() {
+            const selectClasificacion = document.getElementById('cot_clasificacion');
+            const inputAncho = document.getElementById('cot_ancho');
+            const inputLongitud = document.getElementById('cot_longitud');
             
-            recalcularPorArea();
-            document.getElementById('modalCotizacion').style.display = 'flex';
-        }
+            if (!selectClasificacion) return;
 
-        // Carga automática de productos basados en la categoría seleccionada y cálculo por M2
-        function recalcarPorArea() {
-            const categoriaActual = document.getElementById('cot_clasificacion').value;
-            const ancho = parseFloat(document.getElementById('cot_ancho').value) || 0;
-            const longitud = parseFloat(document.getElementById('cot_longitud').value) || 0;
+            const categoriaActual = selectClasificacion.value;
+            const ancho = inputAncho ? parseFloat(inputAncho.value) || 0 : 0;
+            const longitud = inputLongitud ? parseFloat(inputLongitud.value) || 0 : 0;
             const areaM2 = ancho * longitud;
 
             const tbody = document.getElementById('tablaDetalles');
+            if (!tbody) return;
             
             if (tbody.children.length === 0 || areaM2 > 0) {
                 tbody.innerHTML = ''; 
 
-                // Filtrar productos del catálogo que coincidan con la categoría seleccionada
                 const productosCategoria = catalogoProductosGlobal.filter(p => p.categoria.toLowerCase() === categoriaActual.toLowerCase());
 
                 if (productosCategoria.length > 0) {
@@ -346,7 +343,6 @@ try {
                     });
                 }
 
-                // Agregar Mano de Obra estándar para esta categoría
                 let cantMano = areaM2 > 0 ? areaM2 : 1;
                 let costoMano = categoriaActual === 'Construcción' ? 1200 : (categoriaActual === 'Electricidad' ? 250 : 180);
                 agregarFilaDetalle('MANO_OBRA', {
@@ -357,6 +353,19 @@ try {
                     margen_porcentaje: 15
                 });
             }
+        };
+
+        async function abrirModalNuevaCotizacion() {
+            await cargarCatalogoProductos();
+            document.getElementById('modalTitulo').innerText = 'Nueva Cotización de Proyecto';
+            document.getElementById('cot_id').value = '';
+            document.getElementById('formCotizacion').reset();
+            document.getElementById('cot_fecha').valueAsDate = new Date();
+            document.getElementById('cot_clasificacion').value = 'Construcción';
+            document.getElementById('tablaDetalles').innerHTML = '';
+            
+            window.recalcularPorArea();
+            document.getElementById('modalCotizacion').style.display = 'flex';
         }
 
         function cerrarModalCotizacion() {
