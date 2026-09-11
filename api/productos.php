@@ -84,26 +84,22 @@ if ($accion === 'guardar_lote') {
     try {
         $pdo->beginTransaction();
 
-        // 1. Generar número de inventario correlativo (ej: INV-20260818-0001)
         $prefijo = "INV-" . date("Ymd") . "-";
         $stmtNum = $pdo->prepare("SELECT COUNT(*) FROM entradas_inventario WHERE numero_entrada LIKE ?");
         $stmtNum->execute([$prefijo . '%']);
         $correlativo = $stmtNum->fetchColumn() + 1;
         $numeroEntrada = $prefijo . str_pad($correlativo, 4, '0', STR_PAD_LEFT);
 
-        // 2. Calcular totales del lote
         $totalItems = count($productos);
         $totalUnidades = 0;
         foreach ($productos as $p) {
             $totalUnidades += intval($p['cantidad']);
         }
 
-        // 3. Insertar la cabecera del lote/inventario
         $stmtCabecera = $pdo->prepare("INSERT INTO entradas_inventario (numero_entrada, usuario_id, total_items, total_unidades) VALUES (?, ?, ?, ?)");
         $stmtCabecera->execute([$numeroEntrada, $usuarioId, $totalItems, $totalUnidades]);
         $entradaId = $pdo->lastInsertId();
 
-        // 4. Procesar cada producto y guardar su detalle
         $stmtDetalle = $pdo->prepare("INSERT INTO detalle_entrada_inventario (entrada_id, producto_id, cantidad, precio_compra, precio_venta) VALUES (?, ?, ?, ?, ?)");
 
         foreach ($productos as $item) {
@@ -117,11 +113,9 @@ if ($accion === 'guardar_lote') {
             $productoIdFinal = $id;
 
             if ($id > 0) {
-                // Producto existente: Actualizar stock y precios si es necesario
                 $stmt = $pdo->prepare("UPDATE productos SET stock = stock + ?, precio_compra = ?, precio_venta = ? WHERE id = ?");
                 $stmt->execute([$cantidad, $precio_compra, $precio_venta, $id]);
             } else {
-                // Verificar si existe por código
                 $stmtCheck = $pdo->prepare("SELECT id FROM productos WHERE codigo_barra = ?");
                 $stmtCheck->execute([$codigo_barra]);
                 $existente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
@@ -131,14 +125,12 @@ if ($accion === 'guardar_lote') {
                     $stmt = $pdo->prepare("UPDATE productos SET stock = stock + ?, precio_compra = ?, precio_venta = ? WHERE id = ?");
                     $stmt->execute([$cantidad, $precio_compra, $precio_venta, $productoIdFinal]);
                 } else {
-                    // Producto completamente nuevo
                     $stmt = $pdo->prepare("INSERT INTO productos (codigo_barra, nombre, precio_compra, precio_venta, stock) VALUES (?, ?, ?, ?, ?)");
                     $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $cantidad]);
                     $productoIdFinal = $pdo->lastInsertId();
                 }
             }
 
-            // Guardar detalle de la entrada
             $stmtDetalle->execute([$entradaId, $productoIdFinal, $cantidad, $precio_compra, $precio_venta]);
         }
 
@@ -154,7 +146,7 @@ if ($accion === 'guardar_lote') {
     exit;
 }
 
-// --- 5. GUARDAR INDIVIDUAL ---
+// --- 5. GUARDAR INDIVIDUAL (Con soporte para Proveedor) ---
 if ($accion === 'guardar') {
     if ($rolUsuario !== 'admin') {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
@@ -167,49 +159,65 @@ if ($accion === 'guardar') {
     $precio_compra = floatval($_POST['precio_compra'] ?? 0);
     $precio_venta  = floatval($_POST['precio_venta'] ?? 0);
     $stock         = intval($_POST['stock'] ?? 0);
+    $proveedor_id  = !empty($_POST['proveedor_id']) ? intval($_POST['proveedor_id']) : null;
 
     if (empty($codigo_barra) || empty($nombre) || $precio_venta <= 0) {
         echo json_encode(['success' => false, 'message' => 'Complete los campos obligatorios']);
         exit;
     }
 
-    $stmtCheck = $pdo->prepare("SELECT * FROM productos WHERE codigo_barra = ? LIMIT 1");
-    $stmtCheck->execute([$codigo_barra]);
-    $existente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+    try {
+        $pdo->beginTransaction();
 
-    if ($existente) {
-        $mismoNombre = ($existente['nombre'] === $nombre);
-        $mismoPrecioC = (floatval($existente['precio_compra']) == $precio_compra);
-        $mismoPrecioV = (floatval($existente['precio_venta']) == $precio_venta);
+        $stmtCheck = $pdo->prepare("SELECT * FROM productos WHERE codigo_barra = ? LIMIT 1");
+        $stmtCheck->execute([$codigo_barra]);
+        $existente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
-        if ($mismoNombre && $mismoPrecioC && $mismoPrecioV) {
-            $nuevoStock = intval($existente['stock']) + $stock;
-            $stmtUpdate = $pdo->prepare("UPDATE productos SET stock = ? WHERE id = ?");
-            $stmtUpdate->execute([$nuevoStock, $existente['id']]);
+        $productoIdFinal = '';
 
-            echo json_encode(['success' => true, 'message' => "Se sumaron {$stock} unidades al stock."]);
-            exit;
+        if ($existente) {
+            $idActualizar = !empty($id) ? $id : $existente['id'];
+            
+            // Actualizar producto existente
+            $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = stock + ? WHERE id = ?");
+            $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $idActualizar]);
+            $productoIdFinal = $idActualizar;
+            
+            $mensajeRespuesta = 'Producto actualizado correctamente y stock sumado.';
+        } else {
+            if (!empty($id)) {
+                $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = ? WHERE id = ?");
+                $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $id]);
+                $productoIdFinal = $id;
+                $mensajeRespuesta = 'Producto actualizado';
+            } else {
+                $stmt = $pdo->prepare("INSERT INTO productos (codigo_barra, nombre, precio_compra, precio_venta, stock) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock]);
+                $productoIdFinal = $pdo->lastInsertId();
+                $mensajeRespuesta = 'Producto registrado exitosamente';
+            }
         }
 
-        $idActualizar = !empty($id) ? $id : $existente['id'];
-        $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = ? WHERE id = ?");
-        $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $idActualizar]);
-        echo json_encode(['success' => true, 'message' => 'Producto actualizado correctamente']);
-        exit;
-    }
-
-    if (!empty($id)) {
-        $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = ? WHERE id = ?");
-        $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $id]);
-        echo json_encode(['success' => true, 'message' => 'Producto actualizado']);
-    } else {
-        try {
-            $stmt = $pdo->prepare("INSERT INTO productos (codigo_barra, nombre, precio_compra, precio_venta, stock) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock]);
-            echo json_encode(['success' => true, 'message' => 'Producto registrado exitosamente']);
-        } catch (PDOException $e) {
-            echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        // Si se especificó un proveedor, sincronizar la relación en la tabla puente `producto_proveedor`
+        if ($productoIdFinal && $proveedor_id) {
+            $stmtProvCheck = $pdo->prepare("SELECT id FROM producto_proveedor WHERE producto_id = ? AND proveedor_id = ?");
+            $stmtProvCheck->execute([$productoIdFinal, $proveedor_id]);
+            
+            if (!$stmtProvCheck->fetch()) {
+                $stmtProvIns = $pdo->prepare("INSERT INTO producto_proveedor (producto_id, proveedor_id, precio) VALUES (?, ?, ?)");
+                $stmtProvIns->execute([$productoIdFinal, $proveedor_id, $precio_compra]);
+            } else {
+                $stmtProvUpd = $pdo->prepare("UPDATE producto_proveedor SET precio = ? WHERE producto_id = ? AND proveedor_id = ?");
+                $stmtProvUpd->execute([$precio_compra, $productoIdFinal, $proveedor_id]);
+            }
         }
+
+        $pdo->commit();
+        echo json_encode(['success' => true, 'message' => $mensajeRespuesta]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Error al guardar el producto: ' . $e->getMessage()]);
     }
     exit;
 }
@@ -229,7 +237,6 @@ if ($accion === 'eliminar') {
         exit;
     }
 
-    // === AQUÍ COLOCAS EL SCRIPT DE VERIFICACIÓN ===
     try {
         $stmtUser = $pdo->prepare("SELECT password FROM usuarios WHERE id = ?");
         $stmtUser->execute([$_SESSION['usuario_id']]);
@@ -253,7 +260,6 @@ if ($accion === 'eliminar') {
         echo json_encode(['success' => false, 'message' => 'Error al verificar credenciales: ' . $e->getMessage()]);
         exit;
     }
-    // ===============================================
 
     if ($id > 0) {
         try {
