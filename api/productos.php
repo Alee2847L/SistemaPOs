@@ -286,4 +286,41 @@ if ($accion === 'listar_proveedores') {
     }
     exit;
 }
+
+// --- 8. CREAR PROVEEDOR RÁPIDO DESDE EL MODAL ---
+if ($accion === 'guardar_proveedor') {
+    if ($rolUsuario !== 'admin') {
+        echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
+        exit;
+    }
+
+    $nombre_empresa = trim($_POST['nombre_empresa'] ?? '');
+    $contacto       = trim($_POST['contacto'] ?? '');
+    $telefono       = trim($_POST['telefono'] ?? '');
+    $correo         = trim($_POST['correo'] ?? '');
+    $rtn            = trim($_POST['rtn'] ?? '');
+    $direccion      = trim($_POST['direccion'] ?? '');
+
+    if (empty($nombre_empresa)) {
+        echo json_encode(['success' => false, 'message' => 'El nombre de la empresa es obligatorio']);
+        exit;
+    }
+
+    try {
+        $stmt = $pdo->prepare("INSERT INTO proveedores (nombre_empresa, contacto, telefono, correo, rtn, direccion) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$nombre_empresa, $contacto, $telefono, $correo, $rtn, $direccion]);
+        
+        $nuevoId = $pdo->lastInsertId();
+
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Proveedor registrado con éxito',
+            'id' => $nuevoId,
+            'nombre_empresa' => $nombre_empresa
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Error al registrar el proveedor: ' . $e->getMessage()]);
+    }
+    exit;
+}
 ?>
