@@ -13,16 +13,20 @@ $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_r
 // --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
 $nombre_empresa = "INVERSIONES J."; // Valor por defecto
 try {
-    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
     $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
             $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
         }
     }
-} catch (Exception $e) {
-    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
-}
+} catch (Exception $e) {}
+
+// --- OBTENER PROVEEDORES DESDE LA BD ---
+$proveedores = [];
+try {
+    $stmt_prov = $pdo->query("SELECT id, nombre FROM proveedores ORDER BY nombre ASC");
+    $proveedores = $stmt_prov->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -164,6 +168,20 @@ try {
                         <label class="block font-semibold text-xs text-slate-600 mb-1">Nombre del Producto:</label>
                         <input type="text" id="prod_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition" required>
                     </div>
+                    <div>
+                        <label class="block font-semibold text-xs text-slate-600 mb-1">Proveedor:</label>
+                        <div class="flex gap-2">
+                            <select id="prod_proveedor_id" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition">
+                                <option value="">Seleccione un proveedor...</option>
+                                <?php foreach ($proveedores as $prov): ?>
+                                    <option value="<?php echo $prov['id']; ?>"><?php echo htmlspecialchars($prov['nombre']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="button" onclick="abrirModalNuevoProveedor()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shrink-0 flex items-center gap-1" title="Agregar nuevo proveedor">
+                                <i class="fa-solid fa-plus"></i> Nuevo
+                            </button>
+                        </div>
+                    </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block font-semibold text-xs text-slate-600 mb-1">Precio Compra (L.):</label>
@@ -181,6 +199,32 @@ try {
                     <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
                         <button type="button" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition" onclick="cerrarModal()">Cancelar</button>
                         <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl transition shadow-sm">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Proveedor Express (z-[70]) -->
+    <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[70] flex items-center justify-center p-4" id="modalNuevoProveedor" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h4 class="font-bold text-slate-900 text-base">Registrar Nuevo Proveedor</h4>
+                <button onclick="cerrarModalNuevoProveedor()" class="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg transition"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6">
+                <form id="formNuevoProveedorQuick" class="space-y-4" onsubmit="guardarProveedorRapido(event)">
+                    <div>
+                        <label class="block font-semibold text-xs text-slate-600 mb-1">Nombre del Proveedor:</label>
+                        <input type="text" id="nuevo_prov_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition" required autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-xs text-slate-600 mb-1">Teléfono (Opcional):</label>
+                        <input type="text" id="nuevo_prov_telefono" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition" autocomplete="off">
+                    </div>
+                    <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                        <button type="button" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition" onclick="cerrarModalNuevoProveedor()">Cancelar</button>
+                        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold rounded-xl transition shadow-sm">Guardar y Seleccionar</button>
                     </div>
                 </form>
             </div>
@@ -348,6 +392,7 @@ try {
                             esSumarStockExistente = true;
                             document.getElementById('prod_id').value = p.id;
                             document.getElementById('prod_nombre').value = p.nombre;
+                            document.getElementById('prod_proveedor_id').value = p.proveedor_id || '';
                             document.getElementById('prod_precio_compra').value = p.precio_compra;
                             document.getElementById('prod_precio_venta').value = p.precio_venta;
 
@@ -378,8 +423,11 @@ try {
                 const modalInd = document.getElementById('modalProducto');
                 const modalLote = document.getElementById('modalMercaderia');
                 const modalSeg = document.getElementById('modalEliminarSeguridad');
+                const modalProv = document.getElementById('modalNuevoProveedor');
 
-                if (modalInd && modalInd.style.display === 'flex') {
+                if (modalProv && modalProv.style.display === 'flex') {
+                    cerrarModalNuevoProveedor();
+                } else if (modalInd && modalInd.style.display === 'flex') {
                     cerrarModal();
                 } else if (modalLote && modalLote.style.display === 'flex') {
                     cerrarModalMercaderia();
@@ -391,6 +439,51 @@ try {
 
         function escapeHtml(str) {
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // --- FUNCIONES PARA PROVEEDORES EXPRESS ---
+        function abrirModalNuevoProveedor() {
+            document.getElementById('formNuevoProveedorQuick').reset();
+            document.getElementById('modalNuevoProveedor').style.display = 'flex';
+            document.getElementById('nuevo_prov_nombre').focus();
+        }
+
+        function cerrarModalNuevoProveedor() {
+            document.getElementById('modalNuevoProveedor').style.display = 'none';
+        }
+
+        function guardarProveedorRapido(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('nuevo_prov_nombre').value.trim();
+            const telefono = document.getElementById('nuevo_prov_telefono').value.trim();
+
+            if (!nombre) return;
+
+            const formData = new FormData();
+            formData.append('accion', 'guardar_rapido'); // O el endpoint que maneje tus proveedores
+            formData.append('nombre', nombre);
+            formData.append('telefono', telefono);
+
+            // Nota: Cambia '../api/proveedores.php' por el archivo API que procesa los proveedores en tu proyecto
+            fetch('../api/proveedores.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const select = document.getElementById('prod_proveedor_id');
+                    const nuevaOpcion = document.createElement('option');
+                    nuevaOpcion.value = data.id;
+                    nuevaOpcion.text = nombre;
+                    select.appendChild(nuevaOpcion);
+                    select.value = data.id; // Autoseleccionar el nuevo proveedor creado
+
+                    cerrarModalNuevoProveedor();
+                } else {
+                    alert(data.message || 'Error al guardar el proveedor.');
+                }
+            })
+            .catch(() => {
+                alert('Error de conexión al guardar el proveedor.');
+            });
         }
 
         function cargarProductos() {
@@ -590,7 +683,6 @@ try {
             
             document.getElementById('prod_codigo_barra').value = codigo;
 
-            // SI VIENE DESDE LOTE: Forzamos stock en 1 y lo bloqueamos
             if (vieneDesdeLote) {
                 const inputStock = document.getElementById('prod_stock');
                 inputStock.value = 1;
@@ -611,7 +703,6 @@ try {
             document.getElementById('prod_id').value = '';
             desbloquearFormularioNuevo();
             
-            // Asegurar que el stock sea editable para producto individual normal
             const inputStock = document.getElementById('prod_stock');
             inputStock.readOnly = false;
             inputStock.classList.remove('input-bloqueado');
@@ -637,6 +728,7 @@ try {
 
         function bloquearCamposInformacion(bloquear) {
             document.getElementById('prod_nombre').readOnly = bloquear;
+            document.getElementById('prod_proveedor_id').disabled = bloquear;
             document.getElementById('prod_precio_compra').readOnly = bloquear;
             document.getElementById('prod_precio_venta').readOnly = bloquear;
         }
@@ -653,6 +745,7 @@ try {
                     document.getElementById('prod_id').value = p.id;
                     document.getElementById('prod_codigo_barra').value = p.codigo_barra;
                     document.getElementById('prod_nombre').value = p.nombre;
+                    document.getElementById('prod_proveedor_id').value = p.proveedor_id || '';
                     document.getElementById('prod_precio_compra').value = p.precio_compra;
                     document.getElementById('prod_precio_venta').value = p.precio_venta;
                     
@@ -677,11 +770,11 @@ try {
             e.preventDefault();
             const codigo = document.getElementById('prod_codigo_barra').value.trim();
             const nombre = document.getElementById('prod_nombre').value.trim();
+            const proveedorId = document.getElementById('prod_proveedor_id').value;
             const precioC = parseFloat(document.getElementById('prod_precio_compra').value);
             const precioV = parseFloat(document.getElementById('prod_precio_venta').value);
             const cantidad = parseInt(document.getElementById('prod_stock').value);
 
-            // Si venimos del flujo de lote masivo, se agrega con stock 1 automáticamente sin tocar la DB
             if (vieneDesdeLote) {
                 const yaExisteEnLote = loteMercaderia.some(item => item.codigo_barra === codigo);
                 if (yaExisteEnLote) {
@@ -704,12 +797,12 @@ try {
                 if (!seguro) return;
             }
 
-            // Comportamiento normal para producto individual fuera del lote
             const formData = new FormData();
             formData.append('accion', 'guardar');
             formData.append('id', document.getElementById('prod_id').value);
             formData.append('codigo_barra', codigo);
             formData.append('nombre', nombre);
+            formData.append('proveedor_id', proveedorId);
             formData.append('precio_compra', precioC);
             formData.append('precio_venta', precioV);
             formData.append('stock', cantidad);
