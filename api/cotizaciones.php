@@ -36,8 +36,8 @@ if ($accion === 'listar') {
 // --- 1.1. LISTAR PRODUCTOS CON SUS MÚLTIPLES PROVEEDORES Y PRECIOS ---
 if ($accion === 'listar_productos_proveedores') {
     try {
-        // 1. Obtener productos de la base de datos (asegúrate de tener las columnas categoria y factor_rendimiento)
-        $stmt = $pdo->query("SELECT id, nombre, unidad, categoria, factor_rendimiento, margen_porcentaje FROM productos");
+        // 1. Obtener todos los productos de la base de datos
+        $stmt = $pdo->query("SELECT id, nombre, unidad, categoria, factor_rendimiento, margen_porcentaje, precio_compra FROM productos");
         $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $resultado = [];
@@ -52,17 +52,29 @@ if ($accion === 'listar_productos_proveedores') {
             $stmt_prov->execute([$prod['id']]);
             $proveedores_precios = $stmt_prov->fetchAll(PDO::FETCH_ASSOC);
 
-            // Proveedor por defecto (el primero de la lista o el más económico)
-            $proveedor_sugerido_id = !empty($proveedores_precios) ? $proveedores_precios[0]['proveedor_id'] : null;
-            $costo_sugerido = !empty($proveedores_precios) ? $proveedores_precios[0]['precio'] : 0;
+            // Si no hay proveedores en la tabla pivote, creamos una opción base usando el precio de compra del producto
+            if (empty($proveedores_precios)) {
+                $precio_base = isset($prod['precio_compra']) ? floatval($prod['precio_compra']) : 0;
+                $proveedores_precios = [
+                    [
+                        'proveedor_id' => 0,
+                        'nombre_empresa' => 'Inventario General / Sin Proveedor',
+                        'precio' => $precio_base
+                    ]
+                ];
+            }
+
+            // Proveedor por defecto (el primero de la lista)
+            $proveedor_sugerido_id = $proveedores_precios[0]['proveedor_id'];
+            $costo_sugerido = $proveedores_precios[0]['precio'];
 
             $resultado[] = [
                 'id' => $prod['id'],
                 'nombre' => $prod['nombre'],
-                'unidad' => $prod['unidad'],
-                'categoria' => $prod['categoria'] ?? 'Construcción',
-                'factor_rendimiento' => $prod['factor_rendimiento'] ?? 0.5,
-                'margen_porcentaje' => $prod['margen_porcentaje'] ?? 20,
+                'unidad' => !empty($prod['unidad']) ? $prod['unidad'] : 'Und',
+                'categoria' => !empty(trim($prod['categoria'])) ? trim($prod['categoria']) : 'Construcción',
+                'factor_rendimiento' => isset($prod['factor_rendimiento']) ? floatval($prod['factor_rendimiento']) : 0.5,
+                'margen_porcentaje' => isset($prod['margen_porcentaje']) ? floatval($prod['margen_porcentaje']) : 20,
                 'proveedor_sugerido_id' => $proveedor_sugerido_id,
                 'costo_sugerido' => $costo_sugerido,
                 'proveedores_precios' => $proveedores_precios
@@ -144,7 +156,7 @@ if ($accion === 'guardar') {
         
         $cotizacion_id = $pdo->lastInsertId();
 
-        // Insertar Detalles (Asegúrate de incluir producto_id y proveedor_id en tu tabla cotizacion_detalles si deseas almacenar la trazabilidad)
+        // Insertar Detalles
         $sql_det = "INSERT INTO cotizacion_detalles (cotizacion_id, producto_id, proveedor_id, tipo_item, descripcion, unidad, cantidad, costo_unitario, margen_porcentaje, subtotal, total_con_margen) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt_det = $pdo->prepare($sql_det);
@@ -206,7 +218,6 @@ if ($accion === 'generar_ordenes') {
             exit;
         }
 
-        // Agrupar automáticamente por el proveedor seleccionado en cada línea de la cotización
         $ordenes_por_proveedor = [];
         foreach ($detalles as $item) {
             $proveedor_id = intval($item['proveedor_id'] ?? 0);
@@ -261,7 +272,6 @@ if ($accion === 'generar_ordenes') {
 
     } catch (Exception $e) {
         $pdo->rollBack();
-        echo json_ico([$e->getMessage()]); // Nota: ajustado a formato limpio
         echo json_encode(['success' => false, 'message' => 'Error al generar órdenes: ' . $e->getMessage()]);
     }
     exit;
