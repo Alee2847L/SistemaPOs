@@ -68,7 +68,7 @@ if ($accion === 'buscar_exacto') {
 if ($accion === 'obtener_proveedores_producto') {
     $producto_id = intval($_GET['producto_id'] ?? 0);
     try {
-        $stmt = $pdo->prepare("SELECT p.id, p.nombre_empresa, pp.precio 
+        $stmt = $pdo->prepare("SELECT p.id as proveedor_id, p.nombre_empresa, pp.precio 
                              FROM proveedores p
                              JOIN producto_proveedor pp ON p.id = pp.proveedor_id
                              WHERE pp.producto_id = ?
@@ -382,7 +382,7 @@ if (in_array($accion, ['guardar_proveedor', 'crear_proveedor', 'registrar_provee
             'success' => true, 
             'message' => 'Proveedor registrado con éxito',
             'id' => intval($nuevoId),
-            'nombre_empresa' => $nombre_empresa
+            `nombre_empresa` => $nombre_empresa
         ]);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'message' => 'Error al registrar el proveedor: ' . $e->getMessage()]);
@@ -406,7 +406,6 @@ if ($accion === 'actualizar_precio_proveedor_producto') {
             $stmt = $pdo->prepare("UPDATE producto_proveedor SET precio = ? WHERE producto_id = ? AND proveedor_id = ?");
             $stmt->execute([$precio, $producto_id, $proveedor_id]);
 
-            // Sincronizar automáticamente si este proveedor es el principal actual del producto
             $stmtProd = $pdo->prepare("UPDATE productos SET precio_compra = ? WHERE id = ? AND proveedor_id = ?");
             $stmtProd->execute([$precio, $producto_id, $proveedor_id]);
 

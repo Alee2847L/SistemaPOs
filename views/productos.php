@@ -169,7 +169,7 @@ try {
                         <input type="text" id="prod_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition" required>
                     </div>
                     
-                    <!-- Campo de Proveedores Principal / Selección -->
+                    <!-- Campo de Proveedor Principal / Selección -->
                     <div id="seccion_proveedor_principal">
                         <label class="block font-semibold text-xs text-slate-600 mb-1">Proveedor Principal:</label>
                         <div class="flex gap-2">
@@ -352,7 +352,7 @@ try {
         let esSumarStockExistente = false;  
         let vieneDesdeLote = false;
         let loteMercaderia = [];
-        let cacheProveedoresPrecios = {}; // Guarda temporalmente los precios del producto según su proveedor principal
+        let cacheProveedoresPrecios = {}; // Guarda temporalmente los precios del producto según su proveedor
 
         document.addEventListener('DOMContentLoaded', () => {
             const txtClaveInput = document.getElementById('txtClaveAdmin');
@@ -367,7 +367,7 @@ try {
 
             cargarProductos();
 
-            // Evento para actualizar el precio de compra al cambiar de proveedor principal
+            // Evento para actualizar el precio de compra automáticamente al cambiar de proveedor principal
             const selectProvPrincipal = document.getElementById('prod_proveedor_id');
             if (selectProvPrincipal) {
                 selectProvPrincipal.addEventListener('change', function() {
@@ -481,7 +481,6 @@ try {
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        // --- FUNCIONES PARA PROVEEDORES EXPRESS ---
         function abrirModalNuevoProveedor() {
             document.getElementById('formNuevoProveedorQuick').reset();
             document.getElementById('modalNuevoProveedor').style.display = 'flex';
@@ -727,7 +726,7 @@ try {
             document.getElementById('formProducto').reset();
             document.getElementById('prod_id').value = '';
             document.getElementById('seccion_multiples_proveedores').classList.add('hidden');
-            document.getElementById('btn_nuevo_proveedor_express').style.display = 'flex'; // Mostrar botón nuevo
+            document.getElementById('btn_nuevo_proveedor_express').style.display = 'flex';
             desbloquearFormularioNuevo();
             
             document.getElementById('prod_codigo_barra').value = codigo;
@@ -751,7 +750,7 @@ try {
             document.getElementById('formProducto').reset();
             document.getElementById('prod_id').value = '';
             document.getElementById('seccion_multiples_proveedores').classList.add('hidden');
-            document.getElementById('btn_nuevo_proveedor_express').style.display = 'flex'; // Mostrar botón nuevo
+            document.getElementById('btn_nuevo_proveedor_express').style.display = 'flex';
             desbloquearFormularioNuevo();
             
             const inputStock = document.getElementById('prod_stock');
@@ -786,7 +785,7 @@ try {
             vieneDesdeLote = false;
             esModoEdicionDirecta = true;
             esSumarStockExistente = false;
-            cacheProveedoresPrecios = {}; // Limpiar caché
+            cacheProveedoresPrecios = {};
             
             fetch(`../api/productos.php?accion=obtener&id=${id}`)
             .then(res => res.json())
@@ -810,11 +809,9 @@ try {
                     document.getElementById('lbl_prod_stock').innerText = 'Stock Actual:';
                     document.getElementById('prod_stock').placeholder = '';
 
-                    // En modo edición permitimos cambiar el proveedor principal pero ocultamos el botón "+ Nuevo"
                     document.getElementById('prod_proveedor_id').disabled = false;
                     document.getElementById('btn_nuevo_proveedor_express').style.display = 'none';
 
-                    // Mostrar sección para añadir más proveedores asociados
                     document.getElementById('seccion_multiples_proveedores').classList.remove('hidden');
                     cargarProveedoresAsociados(p.id);
 
@@ -834,10 +831,9 @@ try {
             .then(res => {
                 if (res.success && res.data.length > 0) {
                     let html = '';
-                    cacheProveedoresPrecios = {}; // Reiniciar caché
+                    cacheProveedoresPrecios = {};
 
                     res.data.forEach(prov => {
-                        // Guardar en caché el costo que ofrece este proveedor
                         cacheProveedoresPrecios[prov.proveedor_id] = prov.precio;
 
                         html += `<div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded border border-slate-200 gap-2">
@@ -885,8 +881,7 @@ try {
             .then(data => {
                 if (data.success) {
                     alert('Precio actualizado correctamente.');
-                    cacheProveedoresPrecios[proveedorId] = nuevoPrecio; // Actualizar caché
-                    // Si el proveedor actualizado es el principal seleccionado actualmente, reflejarlo en el input general de compra
+                    cacheProveedoresPrecios[proveedorId] = nuevoPrecio;
                     const provPrincipalActual = document.getElementById('prod_proveedor_id').value;
                     if (provPrincipalActual == proveedorId) {
                         document.getElementById('prod_precio_compra').value = parseFloat(nuevoPrecio).toFixed(2);
