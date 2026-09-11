@@ -1,8 +1,13 @@
 <?php
+// Forzar la visualización de errores para depurar el Error 500
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 // views/cotizaciones.php
 session_start();
-require_once '../config/conexion.php';
-
+require_once __DIR__ . '/../config/conexion.php';
+// ... el resto de tu código ...
 if (!isset($_SESSION['usuario_id'])) {
     header('Location: login.php');
     exit;
