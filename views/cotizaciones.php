@@ -393,22 +393,29 @@ try {
             let selectorProveedorHtml = '';
 
             if (isMaterial) {
-                const categoriaActual = document.getElementById('cot_clasificacion').value;
-                const prodsFiltrados = catalogoProductosGlobal.filter(p => p.categoria.toLowerCase() === categoriaActual.toLowerCase());
-
+                // Rellenar combobox con los productos del catálogo global
                 let opcionesProd = '<option value="">Seleccione producto...</option>';
-                prodsFiltrados.forEach(p => {
+                catalogoProductosGlobal.forEach(p => {
                     const sel = (String(p.id) === String(productoId)) ? 'selected' : '';
                     opcionesProd += `<option value="${p.id}" ${sel}>${p.nombre}</option>`;
                 });
 
                 selectorProductoHtml = `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs producto-select" onchange="cambiarProductoCatalogo(this)">${opcionesProd}</select>`;
                 
+                // Rellenar combobox de proveedores según el producto seleccionado o sus opciones
                 let opcionesProv = '<option value="">Seleccione proveedor...</option>';
-                let proveedoresOpciones = item && item.proveedores_opciones ? item.proveedores_opciones : [];
-                
+                let proveedoresOpciones = [];
+
+                if (item && item.proveedores_opciones) {
+                    proveedoresOpciones = item.proveedores_opciones;
+                } else if (productoId) {
+                    const prodEncontrado = catalogoProductosGlobal.find(p => String(p.id) === String(productoId));
+                    if (prodEncontrado) proveedoresOpciones = prodEncontrado.proveedores_precios || [];
+                }
+
                 proveedoresOpciones.forEach(prov => {
-                    const selProv = (String(prov.proveedor_id) === String(item.proveedor_id_activo)) ? 'selected' : '';
+                    const activoId = item ? (item.proveedor_id_activo || item.proveedor_id) : '';
+                    const selProv = (String(prov.proveedor_id) === String(activoId)) ? 'selected' : '';
                     opcionesProv += `<option value="${prov.proveedor_id}" data-precio="${prov.precio}" ${selProv}>${prov.nombre_empresa} (L. ${Number(prov.precio).toFixed(2)})</option>`;
                 });
 
