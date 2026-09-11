@@ -60,7 +60,7 @@ if ($accion === 'buscar_exacto') {
     exit;
 }
 
-// --- GUARDAR LOTE DE MERCADERÍA CON TRAZABILIDAD ---
+// --- 4. GUARDAR LOTE DE MERCADERÍA CON TRAZABILIDAD ---
 if ($accion === 'guardar_lote') {
     if ($rolUsuario !== 'admin') {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado: Solo el administrador puede agregar lotes.']);
@@ -169,36 +169,32 @@ if ($accion === 'guardar') {
     try {
         $pdo->beginTransaction();
 
-        $stmtCheck = $pdo->prepare("SELECT * FROM productos WHERE codigo_barra = ? LIMIT 1");
-        $stmtCheck->execute([$codigo_barra]);
-        $existente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+        $productoIdFinal = null;
+        $mensajeRespuesta = '';
 
-        $productoIdFinal = '';
-
-        if ($existente) {
-            $idActualizar = !empty($id) ? $id : $existente['id'];
-            
-            // Actualizar producto existente
-            $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = stock + ? WHERE id = ?");
-            $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $idActualizar]);
-            $productoIdFinal = $idActualizar;
-            
-            $mensajeRespuesta = 'Producto actualizado correctamente y stock sumado.';
+        if (!empty($id)) {
+            $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = ? WHERE id = ?");
+            $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $id]);
+            $productoIdFinal = intval($id);
+            $mensajeRespuesta = 'Producto actualizado correctamente';
         } else {
-            if (!empty($id)) {
-                $stmt = $pdo->prepare("UPDATE productos SET codigo_barra = ?, nombre = ?, precio_compra = ?, precio_venta = ?, stock = ? WHERE id = ?");
-                $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock, $id]);
-                $productoIdFinal = $id;
-                $mensajeRespuesta = 'Producto actualizado';
+            $stmtCheck = $pdo->prepare("SELECT id FROM productos WHERE codigo_barra = ? LIMIT 1");
+            $stmtCheck->execute([$codigo_barra]);
+            $existente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+            if ($existente) {
+                $productoIdFinal = intval($existente['id']);
+                $stmt = $pdo->prepare("UPDATE productos SET nombre = ?, precio_compra = ?, precio_venta = ?, stock = stock + ? WHERE id = ?");
+                $stmt->execute([$nombre, $precio_compra, $precio_venta, $stock, $productoIdFinal]);
+                $mensajeRespuesta = 'Producto existente encontrado: stock actualizado correctamente.';
             } else {
                 $stmt = $pdo->prepare("INSERT INTO productos (codigo_barra, nombre, precio_compra, precio_venta, stock) VALUES (?, ?, ?, ?, ?)");
                 $stmt->execute([$codigo_barra, $nombre, $precio_compra, $precio_venta, $stock]);
-                $productoIdFinal = $pdo->lastInsertId();
+                $productoIdFinal = intval($pdo->lastInsertId());
                 $mensajeRespuesta = 'Producto registrado exitosamente';
             }
         }
 
-        // Si se especificó un proveedor, sincronizar la relación en la tabla puente `producto_proveedor`
         if ($productoIdFinal && $proveedor_id) {
             $stmtProvCheck = $pdo->prepare("SELECT id FROM producto_proveedor WHERE producto_id = ? AND proveedor_id = ?");
             $stmtProvCheck->execute([$productoIdFinal, $proveedor_id]);
@@ -222,7 +218,7 @@ if ($accion === 'guardar') {
     exit;
 }
 
-/// --- 6. ELIMINAR PRODUCTO ---
+// --- 6. ELIMINAR PRODUCTO ---
 if ($accion === 'eliminar') {
     if ($rolUsuario !== 'admin') {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
@@ -271,6 +267,22 @@ if ($accion === 'eliminar') {
         }
     } else {
         echo json_encode(['success' => false, 'message' => 'ID no válido']);
+    }
+    exit;
+}
+
+// --- 7. LISTAR PROVEEDORES PARA EL SELECTOR ---
+if ($accion === 'listar_proveedores') {
+    try {
+        $stmt = $pdo->query("SELECT id, nombre_empresa FROM proveedores ORDER BY nombre_empresa ASC");
+        $proveedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        echo json_encode([
+            'success' => true, 
+            'data' => $proveedores
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Error al cargar proveedores: ' . $e->getMessage()]);
     }
     exit;
 }
