@@ -306,10 +306,9 @@ try {
         // Función auxiliar para normalizar texto (quitar tildes y pasar a minúsculas)
         function normalizarTexto(texto) {
             if (!texto) return '';
-            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
         }
 
-        // Declaración global para evitar errores de referencia en el ámbito del documento
         window.recalcularPorArea = function() {
             const selectClasificacion = document.getElementById('cot_clasificacion');
             const inputAncho = document.getElementById('cot_ancho');
@@ -325,50 +324,53 @@ try {
             const tbody = document.getElementById('tablaDetalles');
             if (!tbody) return;
             
-            if (tbody.children.length === 0 || areaM2 > 0) {
-                tbody.innerHTML = ''; 
+            tbody.innerHTML = ''; 
 
-                const productosCategoria = catalogoProductosGlobal.filter(p => normalizarTexto(p.categoria) === categoriaActualNorm);
+            // Filtramos estrictamente por la categoría seleccionada usando la normalización
+            const productosCategoria = catalogoProductosGlobal.filter(p => normalizarTexto(p.categoria) === categoriaActualNorm);
 
-                if (productosCategoria.length > 0) {
-                    productosCategoria.forEach(prod => {
-                        let cantidadSugerida = 1;
-                        if(areaM2 > 0) {
-                            cantidadSugerida = (areaM2 * (prod.factor_rendimiento || 0.5)).toFixed(2);
-                        }
-                        agregarFilaDetalle('MATERIAL', {
-                            producto_id: prod.id,
-                            descripcion: prod.nombre,
-                            unidad: prod.unidad,
-                            cantidad: cantidadSugerida,
-                            proveedores_opciones: prod.proveedores_precios,
-                            proveedor_id_activo: prod.proveedor_sugerido_id,
-                            costo_unitario: prod.costo_sugerido || 0,
-                            margen_porcentaje: prod.margen_porcentaje || 20
-                        });
+            if (productosCategoria.length > 0) {
+                productosCategoria.forEach(prod => {
+                    let cantidadSugerida = 1;
+                    if(areaM2 > 0) {
+                        cantidadSugerida = (areaM2 * (prod.factor_rendimiento || 0.5)).toFixed(2);
+                    }
+                    agregarFilaDetalle('MATERIAL', {
+                        producto_id: prod.id,
+                        descripcion: prod.nombre,
+                        unidad: prod.unidad,
+                        cantidad: cantidadSugerida,
+                        proveedores_opciones: prod.proveedores_precios,
+                        proveedor_id_activo: prod.proveedor_sugerido_id,
+                        costo_unitario: prod.costo_sugerido || 0,
+                        margen_porcentaje: prod.margen_porcentaje || 20
                     });
-                }
-
-                let cantMano = areaM2 > 0 ? areaM2 : 1;
-                let costoMano = categoriaActualNorm.includes('electricidad') ? 250 : (categoriaActualNorm.includes('acabados') ? 180 : 1200);
-                agregarFilaDetalle('MANO_OBRA', {
-                    descripcion: `Mano de Obra especializada - ${selectClasificacion.value}`,
-                    unidad: categoriaActualNorm.includes('electricidad') ? 'Punto' : 'Glb',
-                    cantidad: cantMano,
-                    costo_unitario: costoMano,
-                    margen_porcentaje: 15
                 });
             }
+
+            let cantMano = areaM2 > 0 ? areaM2 : 1;
+            let costoMano = categoriaActualNorm.includes('electricidad') ? 250 : (categoriaActualNorm.includes('acabados') ? 180 : 1200);
+            agregarFilaDetalle('MANO_OBRA', {
+                descripcion: `Mano de Obra especializada - ${selectClasificacion.value}`,
+                unidad: categoriaActualNorm.includes('electricidad') ? 'Punto' : 'Glb',
+                cantidad: cantMano,
+                costo_unitario: costoMano,
+                margen_porcentaje: 15
+            });
         };
 
         async function abrirModalNuevaCotizacion() {
-            await cargarCatalogoProductos();
             document.getElementById('modalTitulo').innerText = 'Nueva Cotización de Proyecto';
             document.getElementById('cot_id').value = '';
             document.getElementById('formCotizacion').reset();
             document.getElementById('cot_fecha').valueAsDate = new Date();
             document.getElementById('cot_clasificacion').value = 'Construcción';
             document.getElementById('tablaDetalles').innerHTML = '';
+            
+            // Aseguramos que el catálogo esté cargado antes de filtrar y pintar las filas
+            if (catalogoProductosGlobal.length === 0) {
+                await cargarCatalogoProductos();
+            }
             
             window.recalcularPorArea();
             document.getElementById('modalCotizacion').style.display = 'flex';
@@ -399,10 +401,12 @@ try {
             let selectorProveedorHtml = '';
 
             if (isMaterial) {
+                const categoriaActualNorm = normalizarTexto(document.getElementById('cot_clasificacion').value);
+                // Si abrimos la lista manual con el botón, mostramos los de la categoría actual o todos si se prefiere
                 let opcionesProd = '<option value="">Seleccione producto...</option>';
                 catalogoProductosGlobal.forEach(p => {
                     const sel = (String(p.id) === String(productoId)) ? 'selected' : '';
-                    opcionesProd += `<option value="${p.id}" ${sel}>${p.nombre} (${p.categoria})</option>`;
+                    opcionesProd += `<option value="${p.id}" ${sel}>${p.nombre}</option>`;
                 });
 
                 selectorProductoHtml = `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs producto-select" onchange="cambiarProductoCatalogo(this)">${opcionesProd}</select>`;
@@ -472,8 +476,10 @@ try {
                 
                 if (productoEncontrado.proveedores_precios && productoEncontrado.proveedores_precios.length > 0) {
                     productoEncontrado.proveedores_precios.forEach(prov => {
-                        const sel = (String(prov.proveedor_id) === String(productoEncontrado.proveedor_sugerido_id)) ? 'selected' : '';
-                        opcionesProv += `<option value="${prov.proveedor_id}" data-precio="${prov.precio}" ${sel}>${prov.nombre_empresa} (L. ${Number(prov.precio).toFixed(2)})</option>`;
+                        const sel = (String(prov.prov_id) === String(productoEncontrado.proveedor_sugerido_id) || String(prov.proveedor_id) === String(productoEncontrado.proveedor_sugerido_id)) ? 'selected' : '';
+                        const idProvVal = prov.proveedor_id || prov.prov_id;
+                        const nombreProv = prov.nombre_empresa || prov.nombre || 'Proveedor';
+                        opcionesProv += `<option value="${idProvVal}" data-precio="${prov.precio}" ${sel}>${nombreProv} (L. ${Number(prov.precio).toFixed(2)})</option>`;
                     });
                 }
                 selectProv.innerHTML = opcionesProv;
@@ -570,7 +576,7 @@ try {
                 longitud: parseFloat(document.getElementById('cot_longitud').value) || 0,
                 subtotal_general: parseFloat(document.getElementById('lblSubtotal').textContent.replace('L. ', '')),
                 total_general: parseFloat(document.getElementById('lblTotalGeneral').textContent.replace('L. ', '')),
-                detalles: det
+                detalles: detalles
             };
 
             try {
@@ -594,7 +600,9 @@ try {
         });
 
         async function verCotizacion(id) {
-            await cargarCatalogoProductos();
+            if (catalogoProductosGlobal.length === 0) {
+                await cargarCatalogoProductos();
+            }
             fetch(`../api/cotizaciones.php?accion=obtener&id=${id}`)
                 .then(res => res.json())
                 .then(res => {
