@@ -303,6 +303,12 @@ try {
             document.getElementById('tablaCotizaciones').innerHTML = html;
         }
 
+        // Función auxiliar para normalizar texto (quitar tildes y pasar a minúsculas)
+        function normalizarTexto(texto) {
+            if (!texto) return '';
+            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+
         // Declaración global para evitar errores de referencia en el ámbito del documento
         window.recalcularPorArea = function() {
             const selectClasificacion = document.getElementById('cot_clasificacion');
@@ -311,7 +317,7 @@ try {
             
             if (!selectClasificacion) return;
 
-            const categoriaActual = selectClasificacion.value;
+            const categoriaActualNorm = normalizarTexto(selectClasificacion.value);
             const ancho = inputAncho ? parseFloat(inputAncho.value) || 0 : 0;
             const longitud = inputLongitud ? parseFloat(inputLongitud.value) || 0 : 0;
             const areaM2 = ancho * longitud;
@@ -322,7 +328,7 @@ try {
             if (tbody.children.length === 0 || areaM2 > 0) {
                 tbody.innerHTML = ''; 
 
-                const productosCategoria = catalogoProductosGlobal.filter(p => p.categoria.toLowerCase() === categoriaActual.toLowerCase());
+                const productosCategoria = catalogoProductosGlobal.filter(p => normalizarTexto(p.categoria) === categoriaActualNorm);
 
                 if (productosCategoria.length > 0) {
                     productosCategoria.forEach(prod => {
@@ -344,10 +350,10 @@ try {
                 }
 
                 let cantMano = areaM2 > 0 ? areaM2 : 1;
-                let costoMano = categoriaActual === 'Construcción' ? 1200 : (categoriaActual === 'Electricidad' ? 250 : 180);
+                let costoMano = categoriaActualNorm.includes('electricidad') ? 250 : (categoriaActualNorm.includes('acabados') ? 180 : 1200);
                 agregarFilaDetalle('MANO_OBRA', {
-                    descripcion: `Mano de Obra especializada - ${categoriaActual}`,
-                    unidad: categoriaActual === 'Electricidad' ? 'Punto' : 'Glb',
+                    descripcion: `Mano de Obra especializada - ${selectClasificacion.value}`,
+                    unidad: categoriaActualNorm.includes('electricidad') ? 'Punto' : 'Glb',
                     cantidad: cantMano,
                     costo_unitario: costoMano,
                     margen_porcentaje: 15
@@ -393,16 +399,14 @@ try {
             let selectorProveedorHtml = '';
 
             if (isMaterial) {
-                // Rellenar combobox con los productos del catálogo global
                 let opcionesProd = '<option value="">Seleccione producto...</option>';
                 catalogoProductosGlobal.forEach(p => {
                     const sel = (String(p.id) === String(productoId)) ? 'selected' : '';
-                    opcionesProd += `<option value="${p.id}" ${sel}>${p.nombre}</option>`;
+                    opcionesProd += `<option value="${p.id}" ${sel}>${p.nombre} (${p.categoria})</option>`;
                 });
 
                 selectorProductoHtml = `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs producto-select" onchange="cambiarProductoCatalogo(this)">${opcionesProd}</select>`;
                 
-                // Rellenar combobox de proveedores según el producto seleccionado o sus opciones
                 let opcionesProv = '<option value="">Seleccione proveedor...</option>';
                 let proveedoresOpciones = [];
 
@@ -441,6 +445,15 @@ try {
                 <td class="py-2.5 px-3 text-center"><button type="button" class="text-rose-500 hover:text-rose-700 p-1" onclick="this.closest('tr').remove(); calcularTotalesModal();"><i class="fa-solid fa-xmark"></i></button></td>
             `;
             tbody.appendChild(row);
+
+            if (isMaterial && !item && catalogoProductosGlobal.length > 0) {
+                const selectProd = row.querySelector('.producto-select');
+                if (selectProd.options.length > 1) {
+                    selectProd.selectedIndex = 1;
+                    cambiarProductoCatalogo(selectProd);
+                }
+            }
+
             calcularTotalesModal();
         }
 
@@ -557,7 +570,7 @@ try {
                 longitud: parseFloat(document.getElementById('cot_longitud').value) || 0,
                 subtotal_general: parseFloat(document.getElementById('lblSubtotal').textContent.replace('L. ', '')),
                 total_general: parseFloat(document.getElementById('lblTotalGeneral').textContent.replace('L. ', '')),
-                detalles: detalles
+                detalles: det
             };
 
             try {
