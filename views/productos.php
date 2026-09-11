@@ -187,20 +187,27 @@ try {
 
                     <!-- SECCIÓN EXTRA PARA MÚLTIPLES PROVEEDORES EN MODO EDICIÓN -->
                     <div id="seccion_multiples_proveedores" class="hidden bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                        <label class="block font-semibold text-xs text-slate-700">🔗 Proveedores adicionales para este producto:</label>
+                        <label class="block font-semibold text-xs text-slate-700">🔗 Proveedores adicionales y costos:</label>
                         <div id="lista_proveedores_actuales" class="text-xs text-slate-600 space-y-1">
                             <!-- Se llena dinámicamente -->
                         </div>
-                        <div class="flex gap-2 pt-2 border-t border-slate-200">
-                            <select id="select_nuevo_proveedor_extra" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none">
-                                <option value="">Añadir otro proveedor...</option>
-                                <?php foreach ($proveedores as $prov): ?>
-                                    <option value="<?php echo $prov['id']; ?>"><?php echo htmlspecialchars($prov['nombre_empresa']); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <button type="button" onclick="vincularProveedorExtra()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition shrink-0">
-                                Vincular
-                            </button>
+                        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-2 border-t border-slate-200">
+                            <div class="sm:col-span-6">
+                                <select id="select_nuevo_proveedor_extra" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none">
+                                    <option value="">Seleccionar proveedor...</option>
+                                    <?php foreach ($proveedores as $prov): ?>
+                                        <option value="<?php echo $prov['id']; ?>"><?php echo htmlspecialchars($prov['nombre_empresa']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="sm:col-span-4">
+                                <input type="number" step="0.01" min="0.01" id="input_precio_proveedor_extra" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none" placeholder="Precio (L.)">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <button type="button" onclick="vincularProveedorExtra()" class="w-full px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition">
+                                    Vincular
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -812,8 +819,9 @@ try {
                 if (res.success && res.data.length > 0) {
                     let html = '';
                     res.data.forEach(prov => {
-                        html += `<div class="flex items-center justify-between bg-white px-2.5 py-1 rounded border border-slate-200">
-                            <span><i class="fa-solid fa-check text-emerald-600 mr-1"></i> ${escapeHtml(prov.nombre_empresa)}</span>
+                        html += `<div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded border border-slate-200">
+                            <span><i class="fa-solid fa-check text-emerald-600 mr-1"></i> <b>${escapeHtml(prov.nombre_empresa)}</b></span>
+                            <span class="text-slate-600 font-semibold">L. ${parseFloat(prov.precio).toFixed(2)}</span>
                         </div>`;
                     });
                     contenedor.innerHTML = html;
@@ -829,9 +837,16 @@ try {
         function vincularProveedorExtra() {
             const productoId = document.getElementById('prod_id').value;
             const proveedorId = document.getElementById('select_nuevo_proveedor_extra').value;
+            const precioProveedor = document.getElementById('input_precio_proveedor_extra').value;
 
             if (!proveedorId) {
                 alert('Selecciona un proveedor para vincular.');
+                return;
+            }
+
+            if (!precioProveedor || parseFloat(precioProveedor) <= 0) {
+                alert('Ingresa un precio válido que este proveedor ofrece por el producto.');
+                document.getElementById('input_precio_proveedor_extra').focus();
                 return;
             }
 
@@ -839,6 +854,7 @@ try {
             formData.append('accion', 'agregar_proveedor_producto');
             formData.append('producto_id', productoId);
             formData.append('proveedor_id', proveedorId);
+            formData.append('precio', precioProveedor);
 
             fetch('../api/productos.php', { method: 'POST', body: formData })
             .then(res => res.json())
@@ -846,6 +862,7 @@ try {
                 if (data.success) {
                     alert(data.message);
                     document.getElementById('select_nuevo_proveedor_extra').value = '';
+                    document.getElementById('input_precio_proveedor_extra').value = '';
                     cargarProveedoresAsociados(productoId);
                 } else {
                     alert(data.message);

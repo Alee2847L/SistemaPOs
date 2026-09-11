@@ -82,7 +82,7 @@ if ($accion === 'obtener_proveedores_producto') {
     exit;
 }
 
-// --- 5. AGREGAR UN PROVEEDOR EXTRA A UN PRODUCTO (TABLA INTERMEDIA) ---
+// --- 5. AGREGAR UN PROVEEDOR EXTRA A UN PRODUCTO (PIDIENDO EL PRECIO) ---
 if ($accion === 'agregar_proveedor_producto') {
     if (!$es_admin) {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado: Se requiere rol de administrador.']);
@@ -93,26 +93,28 @@ if ($accion === 'agregar_proveedor_producto') {
     $proveedor_id = intval($_POST['proveedor_id'] ?? 0);
     $precio = floatval($_POST['precio'] ?? 0);
 
-    if ($producto_id && $proveedor_id) {
+    // Validar que se hayan enviado los datos requeridos y que el precio sea mayor a 0
+    if ($producto_id && $proveedor_id && $precio > 0) {
         try {
             $stmt_check = $pdo->prepare("SELECT id FROM producto_proveedor WHERE producto_id = ? AND proveedor_id = ?");
             $stmt_check->execute([$producto_id, $proveedor_id]);
             
             if ($stmt_check->fetch()) {
-                // Actualizar precio si ya estaba vinculado
+                // Si ya está vinculado, actualizamos el precio que ofrece
                 $stmt_upd = $pdo->prepare("UPDATE producto_proveedor SET precio = ? WHERE producto_id = ? AND proveedor_id = ?");
                 $stmt_upd->execute([$precio, $producto_id, $proveedor_id]);
-                echo json_encode(['success' => true, 'message' => 'Asociación de proveedor actualizada correctamente.']);
+                echo json_encode(['success' => true, 'message' => 'Precio y asociación del proveedor actualizados correctamente.']);
             } else {
+                // Si no existe, creamos la vinculación guardando el precio del proveedor
                 $stmt_ins = $pdo->prepare("INSERT INTO producto_proveedor (producto_id, proveedor_id, precio) VALUES (?, ?, ?)");
                 $stmt_ins->execute([$producto_id, $proveedor_id, $precio]);
-                echo json_encode(['success' => true, 'message' => 'Proveedor vinculado correctamente al producto.']);
+                echo json_encode(['success' => true, 'message' => 'Proveedor vinculado correctamente con su precio de costo.']);
             }
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => 'Error al vincular el proveedor: ' . $e->getMessage()]);
         }
     } else {
-        echo json_encode(['success' => false, 'message' => 'Datos incompletos para la vinculación.']);
+        echo json_encode(['success' => false, 'message' => 'Datos incompletos. Debe ingresar el proveedor y un precio válido mayor a 0.']);
     }
     exit;
 }
@@ -252,7 +254,7 @@ if ($accion === 'guardar') {
             }
         }
 
-        // Sincronización automática con la tabla intermedia de proveedores
+        // Sincronización automática con la tabla intermedia de proveedores incluyendo su costo
         if ($productoIdFinal && $proveedor_id) {
             $stmtProvCheck = $pdo->prepare("SELECT id FROM producto_proveedor WHERE producto_id = ? AND proveedor_id = ?");
             $stmtProvCheck->execute([$productoIdFinal, $proveedor_id]);
@@ -319,7 +321,6 @@ if ($accion === 'eliminar') {
         try {
             $pdo->beginTransaction();
 
-            // Limpiar dependencias en la tabla intermedia antes de eliminar el producto
             $stmt_pp = $pdo->prepare("DELETE FROM producto_proveedor WHERE producto_id = ?");
             $stmt_pp->execute([$id]);
 
@@ -356,7 +357,7 @@ if ($accion === 'listar_proveedores') {
     exit;
 }
 
-// --- 10. CREAR PROVEEDOR RÁPIDO (Soporta múltiples nombres de acción por seguridad) ---
+// --- 10. CREAR PROVEEDOR RÁPIDO ---
 if (in_array($accion, ['guardar_proveedor', 'crear_proveedor', 'registrar_proveedor'])) {
     if (!$es_admin) {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
