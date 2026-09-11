@@ -321,13 +321,23 @@ try {
             const longitud = inputLongitud ? parseFloat(inputLongitud.value) || 0 : 0;
             const areaM2 = ancho * longitud;
 
+            console.log("--- RECALCULAR POR ÁREA ---");
+            console.log("Categoría seleccionada:", selectClasificacion.value, "(Normalizada:", categoriaActualNorm + ")");
+            console.log("Catálogo global disponible:", catalogoProductosGlobal);
+
             const tbody = document.getElementById('tablaDetalles');
             if (!tbody) return;
             
             tbody.innerHTML = ''; 
 
-            // Filtramos estrictamente por la categoría seleccionada usando la normalización
-            const productosCategoria = catalogoProductosGlobal.filter(p => normalizarTexto(p.categoria) === categoriaActualNorm);
+            // 1. Intentar filtrar por categoría estricta
+            let productosCategoria = catalogoProductosGlobal.filter(p => normalizarTexto(p.categoria) === categoriaActualNorm);
+
+            // 2. RESPALDO DE SEGURIDAD: Si no hay coincidencia exacta pero hay productos en general, mostramos todo el catálogo
+            if (productosCategoria.length === 0 && catalogoProductosGlobal.length > 0) {
+                console.warn("No se encontraron productos con la categoría exacta. Mostrando todo el catálogo disponible como respaldo.");
+                productosCategoria = catalogoProductosGlobal;
+            }
 
             if (productosCategoria.length > 0) {
                 productosCategoria.forEach(prod => {
@@ -346,6 +356,8 @@ try {
                         margen_porcentaje: prod.margen_porcentaje || 20
                     });
                 });
+            } else {
+                console.warn("El catálogo global de productos está vacío.");
             }
 
             let cantMano = areaM2 > 0 ? areaM2 : 1;
@@ -401,8 +413,6 @@ try {
             let selectorProveedorHtml = '';
 
             if (isMaterial) {
-                const categoriaActualNorm = normalizarTexto(document.getElementById('cot_clasificacion').value);
-                // Si abrimos la lista manual con el botón, mostramos los de la categoría actual o todos si se prefiere
                 let opcionesProd = '<option value="">Seleccione producto...</option>';
                 catalogoProductosGlobal.forEach(p => {
                     const sel = (String(p.id) === String(productoId)) ? 'selected' : '';
