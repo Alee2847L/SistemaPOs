@@ -287,8 +287,8 @@ if ($accion === 'listar_proveedores') {
     exit;
 }
 
-// --- 8. CREAR PROVEEDOR RÁPIDO DESDE EL MODAL ---
-if ($accion === 'guardar_proveedor') {
+// --- 8. CREAR PROVEEDOR RÁPIDO (Soporta múltiples nombres de acción por seguridad) ---
+if (in_array($accion, ['guardar_proveedor', 'crear_proveedor', 'registrar_proveedor'])) {
     if ($rolUsuario !== 'admin') {
         echo json_encode(['success' => false, 'message' => 'Acceso denegado']);
         exit;
@@ -315,7 +315,7 @@ if ($accion === 'guardar_proveedor') {
         echo json_encode([
             'success' => true, 
             'message' => 'Proveedor registrado con éxito',
-            'id' => $nuevoId,
+            'id' => intval($nuevoId),
             'nombre_empresa' => $nombre_empresa
         ]);
     } catch (Exception $e) {
