@@ -1,13 +1,8 @@
 <?php
-// Forzar la visualización de errores para depurar el Error 500
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 // views/cotizaciones.php
 session_start();
-require_once __DIR__ . '/../config/conexion.php';
-// ... el resto de tu código ...
+require_once '../config/conexion.php';
+
 if (!isset($_SESSION['usuario_id'])) {
     header('Location: login.php');
     exit;
@@ -16,7 +11,7 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
 // --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
-$nombre_empresa = "INVERSIONES J.A.";[cite: 6]
+$nombre_empresa = "INVERSIONES J.A."; 
 try {
     $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
