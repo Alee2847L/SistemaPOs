@@ -112,28 +112,15 @@ try {
                 <form id="formCotizacion" class="space-y-6">
                     <input type="hidden" id="cot_id" value="">
 
-                    <!-- SELECTOR DE CLASIFICACIÓN CON RADIO BUTTONS -->
+                    <!-- SELECTOR DE CLASIFICACIÓN CON COMBOBOX -->
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Seleccione el Tipo / Categoría de Proyecto:</label>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
-                                <input type="radio" name="clasificacion_radio" value="Construcción" class="text-blue-600" checked onchange="actualizarClasificacion(this.value)">
-                                <span class="ml-2 text-xs font-bold text-slate-700">Construcción</span>
-                            </label>
-                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
-                                <input type="radio" name="clasificacion_radio" value="Electricidad" class="text-blue-600" onchange="actualizarClasificacion(this.value)">
-                                <span class="ml-2 text-xs font-bold text-slate-700">Electricidad</span>
-                            </label>
-                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
-                                <input type="radio" name="clasificacion_radio" value="PVC" class="text-blue-600" onchange="actualizarClasificacion(this.value)">
-                                <span class="ml-2 text-xs font-bold text-slate-700">PVC</span>
-                            </label>
-                            <label class="flex items-center p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-blue-50 transition">
-                                <input type="radio" name="clasificacion_radio" value="Acabados" class="text-blue-600" onchange="actualizarClasificacion(this.value)">
-                                <span class="ml-2 text-xs font-bold text-slate-700">Acabados</span>
-                            </label>
-                        </div>
-                        <input type="hidden" id="cot_clasificacion" value="Construcción">
+                        <label for="cot_clasificacion" class="block text-xs font-bold text-slate-500 uppercase mb-2">Seleccione el Tipo / Categoría de Proyecto:</label>
+                        <select id="cot_clasificacion" class="w-full sm:w-1/3 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition" onchange="recalcularPorArea()">
+                            <option value="Construcción">Construcción</option>
+                            <option value="Electricidad">Electricidad</option>
+                            <option value="PVC">PVC</option>
+                            <option value="Acabados">Acabados</option>
+                        </select>
                     </div>
 
                     <!-- Datos Generales -->
@@ -312,18 +299,12 @@ try {
             document.getElementById('tablaCotizaciones').innerHTML = html;
         }
 
-        function actualizarClasificacion(valor) {
-            document.getElementById('cot_clasificacion').value = valor;
-            recalcularPorArea();
-        }
-
         async function abrirModalNuevaCotizacion() {
             await cargarCatalogoProductos();
             document.getElementById('modalTitulo').innerText = 'Nueva Cotización de Proyecto';
             document.getElementById('cot_id').value = '';
             document.getElementById('formCotizacion').reset();
             document.getElementById('cot_fecha').valueAsDate = new Date();
-            document.querySelector('input[name="clasificacion_radio"][value="Construcción"]').checked = true;
             document.getElementById('cot_clasificacion').value = 'Construcción';
             document.getElementById('tablaDetalles').innerHTML = '';
             
@@ -357,7 +338,7 @@ try {
                             descripcion: prod.nombre,
                             unidad: prod.unidad,
                             cantidad: cantidadSugerida,
-                            proveedores_opciones: prod.proveedores_precios, // Array con opciones de ferreterías/proveedores y precios
+                            proveedores_opciones: prod.proveedores_precios,
                             proveedor_id_activo: prod.proveedor_sugerido_id,
                             costo_unitario: prod.costo_sugerido || 0,
                             margen_porcentaje: prod.margen_porcentaje || 20
@@ -403,7 +384,6 @@ try {
             let selectorProveedorHtml = '';
 
             if (isMaterial) {
-                // Selector de productos filtrados por la categoría activa
                 const categoriaActual = document.getElementById('cot_clasificacion').value;
                 const prodsFiltrados = catalogoProductosGlobal.filter(p => p.categoria.toLowerCase() === categoriaActual.toLowerCase());
 
@@ -415,7 +395,6 @@ try {
 
                 selectorProductoHtml = `<select class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs producto-select" onchange="cambiarProductoCatalogo(this)">${opcionesProd}</select>`;
                 
-                // Opciones de proveedores para este producto (múltiples ferreterías con sus precios)
                 let opcionesProv = '<option value="">Seleccione proveedor...</option>';
                 let proveedoresOpciones = item && item.proveedores_opciones ? item.proveedores_opciones : [];
                 
@@ -449,7 +428,6 @@ try {
             calcularTotalesModal();
         }
 
-        // Al cambiar de producto en el select, cargamos automáticamente sus proveedores y precios alternativos
         function cambiarProductoCatalogo(selectElem) {
             const fila = selectElem.closest('tr');
             const prodId = selectElem.value;
@@ -460,7 +438,6 @@ try {
                 fila.querySelector('.unidad').value = productoEncontrado.unidad;
                 fila.querySelector('.margen').value = productoEncontrado.margen_porcentaje || 20;
 
-                // Llenar select de proveedores con las opciones de este producto específico
                 const selectProv = fila.querySelector('.proveedor-select');
                 let opcionesProv = '<option value="">Seleccione proveedor...</option>';
                 
@@ -472,9 +449,8 @@ try {
                 }
                 selectProv.innerHTML = opcionesProv;
 
-                // Asignar el costo del proveedor por defecto seleccionado
                 if (selectProv.options.length > 1) {
-                    selectProv.selectedIndex = 1; // Seleccionar el primer proveedor con beneficio
+                    selectProv.selectedIndex = 1;
                     cambiarPrecioProveedor(selectProv);
                 } else {
                     fila.querySelector('.costo').value = 0;
@@ -483,7 +459,6 @@ try {
             }
         }
 
-        // Al cambiar de proveedor, el sistema cambia automáticamente el costo del producto con ese vendedor
         function cambiarPrecioProveedor(selectProv) {
             const fila = selectProv.closest('tr');
             const selectedOption = selectProv.options[selectProv.selectedIndex];
@@ -603,9 +578,6 @@ try {
                         document.getElementById('cot_cliente_rtn').value = c.cliente_rtn || '';
                         document.getElementById('cot_proyecto_nombre').value = c.proyecto_nombre;
                         document.getElementById('cot_clasificacion').value = c.clasificacion_proyecto || 'Construcción';
-                        
-                        const radioBtn = document.querySelector(`input[name="clasificacion_radio"][value="${c.clasificacion_proyecto}"]`);
-                        if (radioBtn) radioBtn.checked = true;
 
                         document.getElementById('cot_ancho').value = c.ancho || 0;
                         document.getElementById('cot_longitud').value = c.longitud || 0;
