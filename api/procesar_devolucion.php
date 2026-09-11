@@ -80,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $totalNegativo = -1 * $totalReembolso;
         $montoRecibidoDev = -1 * abs($ventaOriginal['monto_recibido'] ?? 0);
         $cambioDevolucion = $totalReembolso; 
+        $cambioentregado = -1 * abs($cambioDevolucion);
 
         $stmtInsDev->execute([
             $ventaOriginal['cliente_identidad'],
