@@ -179,7 +179,7 @@ try {
                                     <option value="<?php echo $prov['id']; ?>"><?php echo htmlspecialchars($prov['nombre_empresa']); ?></option>
                                 <?php endforeach; ?>
                             </select>
-                            <button type="button" onclick="abrirModalNuevoProveedor()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shrink-0 flex items-center gap-1" title="Agregar nuevo proveedor">
+                            <button type="button" id="btn_nuevo_proveedor_express" onclick="abrirModalNuevoProveedor()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shrink-0 flex items-center gap-1" title="Agregar nuevo proveedor">
                                 <i class="fa-solid fa-plus"></i> Nuevo
                             </button>
                         </div>
@@ -352,6 +352,7 @@ try {
         let esSumarStockExistente = false;  
         let vieneDesdeLote = false;
         let loteMercaderia = [];
+        let cacheProveedoresPrecios = {}; // Guarda temporalmente los precios del producto según su proveedor principal
 
         document.addEventListener('DOMContentLoaded', () => {
             const txtClaveInput = document.getElementById('txtClaveAdmin');
@@ -365,6 +366,17 @@ try {
             }
 
             cargarProductos();
+
+            // Evento para actualizar el precio de compra al cambiar de proveedor principal
+            const selectProvPrincipal = document.getElementById('prod_proveedor_id');
+            if (selectProvPrincipal) {
+                selectProvPrincipal.addEventListener('change', function() {
+                    const provId = this.value;
+                    if (cacheProveedoresPrecios[provId] !== undefined) {
+                        document.getElementById('prod_precio_compra').value = parseFloat(cacheProveedoresPrecios[provId]).toFixed(2);
+                    }
+                });
+            }
 
             const inputScan = document.getElementById('input_scan_lote');
             if (inputScan) {
@@ -503,7 +515,6 @@ try {
                     select.appendChild(nuevaOpcion);
                     select.value = data.id; 
 
-                    // Actualizar también el selector extra si está visible
                     const selectExtra = document.getElementById('select_nuevo_proveedor_extra');
                     if (selectExtra) {
                         const opExtra = document.createElement('option');
@@ -716,6 +727,7 @@ try {
             document.getElementById('formProducto').reset();
             document.getElementById('prod_id').value = '';
             document.getElementById('seccion_multiples_proveedores').classList.add('hidden');
+            document.getElementById('btn_nuevo_proveedor_express').style.display = 'flex'; // Mostrar botón nuevo
             desbloquearFormularioNuevo();
             
             document.getElementById('prod_codigo_barra').value = codigo;
@@ -739,6 +751,7 @@ try {
             document.getElementById('formProducto').reset();
             document.getElementById('prod_id').value = '';
             document.getElementById('seccion_multiples_proveedores').classList.add('hidden');
+            document.getElementById('btn_nuevo_proveedor_express').style.display = 'flex'; // Mostrar botón nuevo
             desbloquearFormularioNuevo();
             
             const inputStock = document.getElementById('prod_stock');
@@ -766,8 +779,6 @@ try {
 
         function bloquearCamposInformacion(bloquear) {
             document.getElementById('prod_nombre').readOnly = bloquear;
-            document.getElementById('prod_proveedor_id').disabled = bloquear;
-            document.getElementById('prod_precio_compra').readOnly = bloquear;
             document.getElementById('prod_precio_venta').readOnly = bloquear;
         }
 
@@ -775,6 +786,7 @@ try {
             vieneDesdeLote = false;
             esModoEdicionDirecta = true;
             esSumarStockExistente = false;
+            cacheProveedoresPrecios = {}; // Limpiar caché
             
             fetch(`../api/productos.php?accion=obtener&id=${id}`)
             .then(res => res.json())
@@ -798,6 +810,10 @@ try {
                     document.getElementById('lbl_prod_stock').innerText = 'Stock Actual:';
                     document.getElementById('prod_stock').placeholder = '';
 
+                    // En modo edición permitimos cambiar el proveedor principal pero ocultamos el botón "+ Nuevo"
+                    document.getElementById('prod_proveedor_id').disabled = false;
+                    document.getElementById('btn_nuevo_proveedor_express').style.display = 'none';
+
                     // Mostrar sección para añadir más proveedores asociados
                     document.getElementById('seccion_multiples_proveedores').classList.remove('hidden');
                     cargarProveedoresAsociados(p.id);
@@ -818,10 +834,24 @@ try {
             .then(res => {
                 if (res.success && res.data.length > 0) {
                     let html = '';
+                    cacheProveedoresPrecios = {}; // Reiniciar caché
+
                     res.data.forEach(prov => {
-                        html += `<div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded border border-slate-200">
-                            <span><i class="fa-solid fa-check text-emerald-600 mr-1"></i> <b>${escapeHtml(prov.nombre_empresa)}</b></span>
-                            <span class="text-slate-600 font-semibold">L. ${parseFloat(prov.precio).toFixed(2)}</span>
+                        // Guardar en caché el costo que ofrece este proveedor
+                        cacheProveedoresPrecios[prov.proveedor_id] = prov.precio;
+
+                        html += `<div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded border border-slate-200 gap-2">
+                            <span class="truncate"><i class="fa-solid fa-check text-emerald-600 mr-1"></i> <b>${escapeHtml(prov.nombre_empresa)}</b></span>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <span class="text-[11px] text-slate-500 font-semibold">L.</span>
+                                <input type="number" step="0.01" id="precio_vinculado_${prov.proveedor_id}" value="${parseFloat(prov.precio).toFixed(2)}" class="w-20 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-right outline-none focus:border-blue-500">
+                                <button type="button" onclick="actualizarPrecioProveedorExtra(${productoId}, ${prov.proveedor_id})" class="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[11px] font-semibold transition" title="Guardar nuevo precio">
+                                    <i class="fa-solid fa-floppy-disk"></i>
+                                </button>
+                                <button type="button" onclick="desvincularProveedorExtra(${productoId}, ${prov.proveedor_id})" class="px-2 py-1 bg-rose-500 hover:bg-rose-600 text-white rounded text-[11px] font-semibold transition" title="Eliminar proveedor vinculado">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
                         </div>`;
                     });
                     contenedor.innerHTML = html;
@@ -831,6 +861,66 @@ try {
             })
             .catch(() => {
                 contenedor.innerHTML = '<span class="text-rose-500">Error al cargar proveedores.</span>';
+            });
+        }
+
+        function actualizarPrecioProveedorExtra(productoId, proveedorId) {
+            const inputPrecio = document.getElementById(`precio_vinculado_${proveedorId}`);
+            const nuevoPrecio = inputPrecio.value;
+
+            if (!nuevoPrecio || parseFloat(nuevoPrecio) <= 0) {
+                alert('Ingresa un precio válido.');
+                inputPrecio.focus();
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('accion', 'actualizar_precio_proveedor_producto');
+            formData.append('producto_id', productoId);
+            formData.append('proveedor_id', proveedorId);
+            formData.append('precio', nuevoPrecio);
+
+            fetch('../api/productos.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Precio actualizado correctamente.');
+                    cacheProveedoresPrecios[proveedorId] = nuevoPrecio; // Actualizar caché
+                    // Si el proveedor actualizado es el principal seleccionado actualmente, reflejarlo en el input general de compra
+                    const provPrincipalActual = document.getElementById('prod_proveedor_id').value;
+                    if (provPrincipalActual == proveedorId) {
+                        document.getElementById('prod_precio_compra').value = parseFloat(nuevoPrecio).toFixed(2);
+                    }
+                } else {
+                    alert(data.message || 'Error al actualizar el precio.');
+                }
+            })
+            .catch(() => {
+                alert('Error al conectar con el servidor.');
+            });
+        }
+
+        function desvincularProveedorExtra(productoId, proveedorId) {
+            if (!confirm('¿Estás seguro de desvincular este proveedor del producto?')) return;
+
+            const formData = new FormData();
+            formData.append('accion', 'eliminar_proveedor_producto');
+            formData.append('producto_id', productoId);
+            formData.append('proveedor_id', proveedorId);
+
+            fetch('../api/productos.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    delete cacheProveedoresPrecios[proveedorId];
+                    cargarProveedoresAsociados(productoId);
+                } else {
+                    alert(data.message || 'Error al desvincular el proveedor.');
+                }
+            })
+            .catch(() => {
+                alert('Error al conectar con el servidor.');
             });
         }
 
