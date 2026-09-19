@@ -153,8 +153,7 @@ try {
                     </div>
                     <div>
                         <label class="block font-semibold text-xs text-slate-700 mb-1" id="lbl_plazo_titulo">Número de Cuotas:</label>
-                        <select id="prestamo_plazo" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition" onchange="recalcularSimulacion()">
-                        </select>
+                        <input type="number" min="1" id="prestamo_plazo" value="12" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition" oninput="recalcularSimulacion()">
                     </div>
                 </div>
 
