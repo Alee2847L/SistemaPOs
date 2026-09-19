@@ -3,33 +3,25 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-try {
-    session_start();
-    require_once '../config/conexion.php';
+session_start();
+require_once '../config/conexion.php';
 
-    if (!isset($_SESSION['usuario_id'])) {
-        header('Location: login.php');
-        exit;
-    }
-    $rolActual =$_SESSION['usuario_rol'] ?? 'vendedor';
-    $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' \vert{}\vert{} strtolower($_SESSION['usuario_rol']) === 'administrador'));
-
-    $nombre_empresa = "INVERSIONES J.";
-    try {
-        $stmt_config =$pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
-        if ($row_config =$stmt_config->fetch(PDO::FETCH_ASSOC)) {
-            if (!empty($row_config['nombre_empresa'])) {
-                $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
-            }
-        }
-    } catch (Exception $e) { }
-
-} catch (Throwable $e) {
-    echo "<h1>Error de PHP detectado:</h1>";
-    echo "<pre>" . $e->getMessage() . "</pre>";
-    echo "<b>Línea:</b> " . $e->getLine();
+if (!isset($_SESSION['usuario_id'])) {
+    header('Location: login.php');
     exit;
 }
+$rolActual =$_SESSION['usuario_rol'] ?? 'vendedor';
+$es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' \vert{}\vert{} strtolower($_SESSION['usuario_rol']) === 'administrador'));
+
+$nombre_empresa = "INVERSIONES J.";
+try {
+    $stmt_config =$pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config =$stmt_config->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($row_config['nombre_empresa'])) {
+            $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+        }
+    }
+} catch (Exception $e) { }
 ?>
 <!DOCTYPE html>
 <html lang="es">
