@@ -64,24 +64,37 @@ if ($accion === 'login') {
         // --- OBTENER LOS MÓDULOS ACTIVOS DE LA BASE DE DATOS CENTRAL ---
         $modulosActivos = [];
         try {
-            // Conexión temporal a la base de datos central
-            $pdoCentral = new PDO("mysql:host=localhost;dbname=pos_central;charset=utf8mb4", "root", ""); 
-            $pdoCentral->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $hostCentral = $_ENV['DB_CENTRAL_HOST'] ?? 'localhost';
+            $userCentral = $_ENV['DB_CENTRAL_USER'] ?? 'admin';
+            $passCentral = $_ENV['DB_CENTRAL_PASS'] ?? 'admin123';
+            $dbCentral   = $_ENV['DB_CENTRAL_NAME'] ?? 'pos_central';
 
-            // Obtenemos el nombre de la base de datos actual en la que está logueándose el usuario
+            $pdoCentral = new PDO(
+                "mysql:host={$hostCentral};dbname={$dbCentral};charset=utf8mb4",
+                $userCentral,
+                $passCentral,
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+                ]
+            );
+
+            // Nombre de la base de datos a la que está conectado el usuario
             $nombre_bd_actual = $pdo->query("SELECT DATABASE()")->fetchColumn();
-            
+
             $stmtCentral = $pdoCentral->prepare("SELECT modulos_activos FROM clientes WHERE nombre_bd = ?");
             $stmtCentral->execute([$nombre_bd_actual]);
-            $rowCliente = $stmtCentral->fetch(PDO::FETCH_ASSOC);
+            $rowCliente = $stmtCentral->fetch();
 
             if ($rowCliente && !empty($rowCliente['modulos_activos'])) {
-                // Decodificamos el JSON de la BD central (ej: ["pos", "productos", "clientes"...])
                 $modulosActivos = json_decode($rowCliente['modulos_activos'], true) ?? [];
+            } else {
+                $modulosActivos = ['pos'];
+                error_log("No se encontró cliente con nombre_bd = '{$nombre_bd_actual}'");
             }
         } catch (Exception $e) {
-            // Si ocurre algún detalle con la central, por defecto permitimos al menos el pos
-            $modulosActivos = ['pos']; 
+            $modulosActivos = ['pos'];
+            error_log("Error al consultar pos_central: " . $e->getMessage());
         }
 
         // --- GUARDAR DATOS Y MÓDULOS EN LAS VARIABLES DE SESIÓN ---
