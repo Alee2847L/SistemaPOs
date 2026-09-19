@@ -75,13 +75,20 @@ if ($accion === 'login') {
             $stmtCentral->execute([$nombre_bd_actual]);
             $rowCliente = $stmtCentral->fetch(PDO::FETCH_ASSOC);
 
+            // --- AGREGA ESTO TEMPORALMENTE PARA DEPURAR ---
+            echo "<pre>";
+            echo "Base actual buscada: " . $nombre_bd_actual . "\n";
+            print_r($rowCliente);
+            echo "</pre>";
+            exit;
+
             if ($rowCliente && !empty($rowCliente['modulos_activos'])) {
                 // Decodificamos el JSON de la BD central (ej: ["pos", "prestamos"])
                 $modulosActivos = json_decode($rowCliente['modulos_activos'], true) ?? [];
             }
         } catch (Exception $e) {
             // Si ocurre algún detalle con la central, por seguridad dejamos vacío o solo POS
-            $modulosActivos = ['inventario']; 
+            $modulosActivos = ['pos']; 
         }
 
         // --- GUARDAR DATOS Y MÓDULOS EN LAS VARIABLES DE SESIÓN ---
