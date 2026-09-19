@@ -1,7 +1,7 @@
 <?php
 // api/prestamos.php
-error_reporting(0);
-ini_set('display_errors', 0);
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 header('Content-Type: application/json; charset=utf-8');
 
 try {
@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
-        // 1. Insertar contrato
+        // 1. Insertar contrato (adaptado a los campos de tu tabla contratos)
         $sqlContrato = "INSERT INTO contratos (
                             codigo_bp, producto_descripcion, total_factura, prima, 
                             monto_financiar, porcentaje_interes, total_credito, 
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $contrato_id = $pdo->lastInsertId();
 
-        // 2. Generar cuotas con fechas exactas según frecuencia
+        // 2. Generar cuotas calculando las fechas exactas según la frecuencia
         $monto_cuota = $numero_cuotas > 0 ? ($total_credito / $numero_cuotas) : $total_credito;
         
         $sqlCuota = "INSERT INTO cuotas_contrato (
@@ -125,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode([
             'success' => true,
             'contrato_id' => $contrato_id,
-            'message' => 'Préstamo creado con éxito.'
+            'message' => 'Préstamo y cuotas generados con éxito.'
         ]);
 
     } catch (Exception $e) {
