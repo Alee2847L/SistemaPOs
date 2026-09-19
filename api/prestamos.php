@@ -34,9 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'listar') {
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'ver_cuotas') {
     $contrato_id = intval($_GET['contrato_id'] ?? 0);
     try {
-        // Obtener datos generales del contrato y cliente
+        // Obtener datos generales del contrato y cliente (Corregido cl.rtn_dni en lugar de cl.dni)
         $stmt_c = $pdo->prepare("
-            SELECT c.*, cl.Nombre as cliente_nombre, cl.dni as cliente_dni, cl.telefono as cliente_telefono
+            SELECT c.*, cl.Nombre as cliente_nombre, cl.rtn_dni as cliente_dni, cl.Telefono as cliente_telefono
             FROM contratos c
             LEFT JOIN clientes cl ON c.codigo_bp = cl.codigo_bp
             WHERE c.id = ?
