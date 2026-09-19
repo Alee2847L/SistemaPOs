@@ -81,7 +81,7 @@ if ($accion === 'login') {
             }
         } catch (Exception $e) {
             // Si ocurre algún detalle con la central, por seguridad dejamos vacío o solo POS
-            $modulosActivos = ['pos']; 
+            $modulosActivos = ['inventario']; 
         }
 
         // --- GUARDAR DATOS Y MÓDULOS EN LAS VARIABLES DE SESIÓN ---
