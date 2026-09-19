@@ -1,7 +1,5 @@
 <?php
 // api/enviar_recordatorios_cuotas.php
-// Script para enviar recordatorios de cuotas (compatible con multi-empresa)
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -17,12 +15,10 @@ if (file_exists($envPath)) {
     }
 }
 
+// Cargar PHPMailer (igual que en auth.php)
 require __DIR__ . '/../phpmailer/Exception.php';
 require __DIR__ . '/../phpmailer/PHPMailer.php';
 require __DIR__ . '/../phpmailer/SMTP.php';
-
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
 
 // Conexión a la base de datos CENTRAL
 try {
@@ -94,7 +90,7 @@ foreach ($empresas as $empresa) {
         }
 
         foreach ($cuotas as $cuota) {
-            $mail = new PHPMailer(true);
+            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
 
             try {
                 $mail->isSMTP();
@@ -152,7 +148,7 @@ foreach ($empresas as $empresa) {
 
             } catch (Exception $e) {
                 $totalErrores++;
-                echo "  → Error enviando a {$cuota['cliente_correo']}: {$mail->ErrorInfo}\n";
+                echo "  → Error enviando a {$cuota['cliente_correo']}: " . $mail->ErrorInfo . "\n";
             }
         }
 
