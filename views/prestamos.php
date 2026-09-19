@@ -12,7 +12,6 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 $rolActual =$_SESSION['usuario_rol'] ?? 'vendedor';
-// ✅ CÓMO DEBE QUEDAR:
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
 $nombre_empresa = "INVERSIONES J.";
@@ -182,6 +181,67 @@ try {
         </div>
     </div>
 
+    <!-- MODAL PLAN DE PAGOS / CUOTAS -->
+    <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden" id="modalPlanPagos">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-purple-600 text-white">
+                <h4 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-file-invoice"></i> Plan de Pagos del Cliente
+                </h4>
+                <div class="flex items-center gap-2">
+                    <button onclick="imprimirPlanPagos()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
+                        <i class="fa-solid fa-print"></i> Imprimir
+                    </button>
+                    <button type="button" onclick="cerrarModalPlanPagos()" class="text-white/80 hover:text-white p-1 text-lg"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            
+            <div class="p-6 overflow-y-auto space-y-4 text-sm flex-grow" id="areaImpresionPlan">
+                <!-- Info del Cliente y Préstamo -->
+                <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div>
+                        <span class="text-slate-500 block">Cliente:</span>
+                        <b id="plan_cli_nombre" class="text-slate-900 text-sm">-</b>
+                        <span id="plan_cli_bp" class="text-slate-500 block">BP000</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block">Concepto / Producto:</span>
+                        <b id="plan_concepto" class="text-slate-900 text-sm">-</b>
+                        <span class="text-slate-500 block">Contrato #<span id="plan_contrato_id">0</span></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block">Resumen Financiero:</span>
+                        <span class="text-slate-700">Monto: <b id="plan_monto_fin">L. 0.00</b></span><br>
+                        <span class="text-slate-700">Total con Interés: <b id="plan_total_cred">L. 0.00</b></span>
+                    </div>
+                </div>
+
+                <!-- Tabla de Cuotas -->
+                <div class="overflow-x-auto rounded-xl border border-slate-200">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[11px] font-semibold">
+                            <tr>
+                                <th class="py-3 px-3 text-center"># Cuota</th>
+                                <th class="py-3 px-3">Fecha de Vencimiento</th>
+                                <th class="py-3 px-3 text-right">Capital</th>
+                                <th class="py-3 px-3 text-right">Lo que Paga (Cuota)</th>
+                                <th class="py-3 px-3 text-right">Saldo Restante</th>
+                                <th class="py-3 px-3 text-center">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaPlanCuotas" class="divide-y divide-slate-200 text-xs text-slate-700 bg-white">
+                            <tr><td colspan="6" class="text-center py-6 text-slate-400">Cargando plan de pagos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button type="button" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-xl transition text-xs" onclick="cerrarModalPlanPagos()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let listaPrestamosOriginal = [];
         let timeoutClientePrestamo = null;
@@ -230,8 +290,8 @@ try {
                         <td class="py-3 px-4 text-xs">${p.plazo_meses} cuotas</td>
                         <td class="py-3 px-4">${estadoBadge}</td>
                         <td class="py-3 px-4 text-center">
-                            <button type="button" class="bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs px-3 py-1.5 rounded-lg font-medium transition inline-flex items-center gap-1" onclick="alert('Funcionalidad de cuotas')">
-                                <i class="fa-solid fa-list-check"></i> Ver Cuotas
+                            <button type="button" class="bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs px-3 py-1.5 rounded-lg font-medium transition inline-flex items-center gap-1" onclick="abrirPlanPagos(${p.id})">
+                                <i class="fa-solid fa-list-check"></i> Plan de Pagos
                             </button>
                         </td>
                     </tr>
@@ -281,17 +341,8 @@ try {
 
         function actualizarOpcionesPlazo() {
             const frecuencia = document.getElementById('prestamo_frecuencia').value;
-            const selectPlazo = document.getElementById('prestamo_plazo');
-            
-            let max = frecuencia === 'mensual' ? 24 : (frecuencia === 'quincenal' ? 48 : 52);
             let label = frecuencia === 'mensual' ? 'Meses' : (frecuencia === 'quincenal' ? 'Quincenas' : 'Semanas');
             document.getElementById('lbl_plazo_titulo').innerText = `Número de Cuotas (${label}):`;
-
-            let html = '';
-            for (let i = 1; i <= max; i++) {
-                html += `<option value="${i}" ${i === (frecuencia === 'mensual' ? 12 : 24) ? 'selected' : ''}>${i} ${label}</option>`;
-            }
-            selectPlazo.innerHTML = html;
             recalcularSimulacion();
         }
 
@@ -345,6 +396,79 @@ try {
 
         function cerrarModalNuevoPrestamo() {
             document.getElementById('modalNuevoPrestamo').classList.add('hidden');
+        }
+
+        function abrirPlanPagos(contratoId) {
+            document.getElementById('modalPlanPagos').classList.remove('hidden');
+            document.getElementById('tablaPlanCuotas').innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-400">Cargando cuotas...</td></tr>';
+
+            fetch(`../api/prestamos.php?accion=ver_cuotas&contrato_id=${contratoId}`)
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        const c = res.contrato;
+                        const cuotas = res.cuotas;
+
+                        document.getElementById('plan_cli_nombre').innerText = c.cliente_nombre || 'Cliente General';
+                        document.getElementById('plan_cli_bp').innerText = c.codigo_bp;
+                        document.getElementById('plan_concepto').innerText = c.producto_descripcion;
+                        document.getElementById('plan_contrato_id').innerText = c.id;
+                        document.getElementById('plan_monto_fin').innerText = 'L. ' + Number(c.monto_financiar).toLocaleString('en-US', {minimumFractionDigits: 2});
+                        document.getElementById('plan_total_cred').innerText = 'L. ' + Number(c.total_credito).toLocaleString('en-US', {minimumFractionDigits: 2});
+
+                        let html = '';
+                        let saldoRestante = parseFloat(c.total_credito);
+                        let totalCuotas = cuotas.length;
+                        let capitalPorCuota = totalCuotas > 0 ? (parseFloat(c.monto_financiar) / totalCuotas) : 0;
+
+                        cuotas.forEach((cuota) => {
+                            let montoCuota = parseFloat(cuota.monto_cuota);
+                            saldoRestante -= montoCuota;
+                            if (saldoRestante < 0) saldoRestante = 0;
+
+                            const estadoBadge = cuota.estado === 'PAGADO' 
+                                ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">PAGADO</span>'
+                                : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">PENDIENTE</span>';
+
+                            html += `
+                                <tr class="border-b border-slate-100 hover:bg-slate-50">
+                                    <td class="py-2.5 px-3 text-center font-bold text-slate-900">${cuota.numero_cuota}</td>
+                                    <td class="py-2.5 px-3 text-slate-600">${cuota.fecha_vencimiento}</td>
+                                    <td class="py-2.5 px-3 text-right font-medium text-slate-700">L. ${capitalPorCuota.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                                    <td class="py-2.5 px-3 text-right font-bold text-purple-600">L. ${montoCuota.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                                    <td class="py-2.5 px-3 text-right font-semibold text-slate-800">L. ${saldoRestante.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                                    <td class="py-2.5 px-3 text-center">${estadoBadge}</td>
+                                </tr>
+                            `;
+                        });
+                        document.getElementById('tablaPlanCuotas').innerHTML = html;
+                    } else {
+                        alert('Error al cargar el plan de pagos: ' + res.message);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('Error de conexión al cargar las cuotas.');
+                });
+        }
+
+        function cerrarModalPlanPagos() {
+            document.getElementById('modalPlanPagos').classList.add('hidden');
+        }
+
+        function imprimirPlanPagos() {
+            const contenido = document.getElementById('areaImpresionPlan').innerHTML;
+            const ventana = window.open('', '', 'height=600,width=800');
+            ventana.document.write('<html><head><title>Plan de Pagos</title>');
+            ventana.document.write('<script src="https://cdn.tailwindcss.com"><\/script>');
+            ventana.document.write('</head><body class="p-8 bg-white">');
+            ventana.document.write('<h2 class="text-xl font-bold mb-4 text-purple-700">Plan de Pagos y Cuotas - INVERSIONES J.</h2>');
+            ventana.document.write(contenido);
+            ventana.document.write('</body></html>');
+            ventana.document.close();
+            setTimeout(() => {
+                ventana.print();
+            }, 500);
         }
 
         document.getElementById('formNuevoPrestamo').addEventListener('submit', async function(e) {

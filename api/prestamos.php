@@ -30,6 +30,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'listar') {
     exit;
 }
 
+// 1.5 Listar cuotas de un contrato específico para el plan de pagos
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'ver_cuotas') {
+    $contrato_id = intval($_GET['contrato_id'] ?? 0);
+    try {
+        // Obtener datos generales del contrato y cliente
+        $stmt_c = $pdo->prepare("
+            SELECT c.*, cl.Nombre as cliente_nombre, cl.dni as cliente_dni, cl.telefono as cliente_telefono
+            FROM contratos c
+            LEFT JOIN clientes cl ON c.codigo_bp = cl.codigo_bp
+            WHERE c.id = ?
+        ");
+        $stmt_c->execute([$contrato_id]);
+        $contrato = $stmt_c->fetch(PDO::FETCH_ASSOC);
+
+        if (!$contrato) {
+            echo json_encode(['success' => false, 'message' => 'Contrato no encontrado']);
+            exit;
+        }
+
+        // Obtener las cuotas
+        $stmt_cuotas = $pdo->prepare("
+            SELECT * FROM cuotas_contrato 
+            WHERE contrato_id = ? 
+            ORDER BY numero_cuota ASC
+        ");
+        $stmt_cuotas->execute([$contrato_id]);
+        $cuotas = $stmt_cuotas->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true, 
+            'contrato' => $contrato, 
+            'cuotas' => $cuotas
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // 2. Guardar nuevo contrato (préstamo) y sus cuotas automáticamente
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
@@ -70,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $contrato_id = $pdo->lastInsertId();
 
-        // Generar las cuotas automáticamente
+        // Generar las cuotas automáticamente en cuotas_contrato
         $monto_cuota = $numero_cuotas > 0 ? ($total_credito / $numero_cuotas) : $total_credito;
         
         $stmtCuota = $pdo->prepare("
