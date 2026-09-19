@@ -1,56 +1,221 @@
 <?php
+// Endurecer la seguridad de las cookies de sesión
+ini_set('session.cookie_httponly', 1);
+ini_set('session.use_strict_mode', 1);
+
 session_start();
-header('Content-Type: application/json');
+require_once '../config/conexion.php';
 
-require_once '../config/db.php'; // Ajusta la ruta a tu conexión si es necesario
+header('Content-Type: application/json; charset=utf-8');
 
-// Recibir datos POST (o JSON)
-$data = json_decode(file_get_contents("php://input"), true);
-$usuario = $data['usuario'] ?? $_POST['usuario'] ?? '';
-$password = $data['password'] ?? $_POST['password'] ?? '';
+// --- CARGAR EL ARCHIVO .ENV DESDE FUERA DE LA CARPETA PÚBLICA ---
+$envPath = __DIR__ . '/../../.env';
+if (file_exists($envPath)) {
+    $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) continue;
+        list($name, $value) = explode('=', $line, 2);
+        $_ENV[trim($name)] = trim($value);
+    }
+}
 
-if (empty($usuario) || empty($password)) {
-    echo json_encode(["status" => "error", "message" => "Por favor, completa todos los campos."]);
+$accion = $_POST['accion'] ?? '';
+
+// --- 1. INICIAR SESIÓN ---
+if ($accion === 'login') {
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? ''; // Sin trim para respetar espacios si los tuviera
+
+    if (empty($email) || empty($password)) {
+        echo json_encode(['success' => false, 'message' => 'Por favor complete todos los campos']);
+        exit;
+    }
+
+    // Buscamos al usuario por correo
+    $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE email = ?");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Si el usuario no existe
+    if (!$user) {
+        usleep(500000); // Retardo para evitar enumeración de correos
+        echo json_encode(['success' => false, 'message' => 'Correo o contraseña incorrectos']);
+        exit;
+    }
+
+    // Validar si el usuario está inactivo
+    if ((int)$user['estado'] === 0) {
+        echo json_encode([
+            'success' => false, 
+            'message' => 'Usuario inactivo, comuníquese con su administrador.'
+        ]);
+        exit;
+    }
+
+    // Verificar contraseña
+    if (password_verify($password, $user['password'])) {
+        // Contraseña correcta: Reiniciamos los intentos fallidos a 0
+        $stmtReset = $pdo->prepare("UPDATE usuarios SET intentos_fallidos = 0 WHERE id = ?");
+        $stmtReset->execute([$user['id']]);
+
+        // Prevenir fijación de sesión
+        session_regenerate_id(true);
+
+        // --- OBTENER LOS MÓDULOS ACTIVOS DE LA BASE DE DATOS CENTRAL ---
+        $modulosActivos = [];
+        try {
+            // Conexión temporal a la base de datos central
+            $pdoCentral = new PDO("mysql:host=localhost;dbname=pos_central;charset=utf8mb4", "root", ""); 
+            $pdoCentral->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // Obtenemos el nombre de la base de datos actual en la que está logueándose el usuario
+            $nombre_bd_actual = $pdo->query("SELECT DATABASE()")->fetchColumn();
+            
+            $stmtCentral = $pdoCentral->prepare("SELECT modulos_activos FROM clientes WHERE nombre_bd = ?");
+            $stmtCentral->execute([$nombre_bd_actual]);
+            $rowCliente = $stmtCentral->fetch(PDO::FETCH_ASSOC);
+
+            if ($rowCliente && !empty($rowCliente['modulos_activos'])) {
+                // Decodificamos el JSON de la BD central (ej: ["pos", "productos", "clientes"...])
+                $modulosActivos = json_decode($rowCliente['modulos_activos'], true) ?? [];
+            }
+        } catch (Exception $e) {
+            // Si ocurre algún detalle con la central, por defecto permitimos al menos el pos
+            $modulosActivos = ['pos']; 
+        }
+
+        // --- GUARDAR DATOS Y MÓDULOS EN LAS VARIABLES DE SESIÓN ---
+        $_SESSION['usuario_id']      = $user['id'];
+        $_SESSION['usuario_nombre']  = $user['nombre'];
+        $_SESSION['usuario_email']   = $user['email'];
+        $_SESSION['usuario_rol']     = $user['rol'];
+        $_SESSION['modulos_activos'] = $modulosActivos; // <--- Módulos listos para validar en todo el sistema
+
+        echo json_encode(['success' => true, 'rol' => $user['rol']]);
+    } else {
+        // Contraseña incorrecta
+        $intentosActuales = ((int)$user['intentos_fallidos'] >= 3) ? 0 : (int)$user['intentos_fallidos'];
+        $nuevosIntentos = $intentosActuales + 1;
+
+        if ($nuevosIntentos >= 3) {
+            $stmtBloquear = $pdo->prepare("UPDATE usuarios SET intentos_fallidos = ?, estado = 0 WHERE id = ?");
+            $stmtBloquear->execute([$nuevosIntentos, $user['id']]);
+
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Usuario inactivo, comuníquese con su administrador.'
+            ]);
+        } else {
+            $stmtActualizarIntentos = $pdo->prepare("UPDATE usuarios SET intentos_fallidos = ? WHERE id = ?");
+            $stmtActualizarIntentos->execute([$nuevosIntentos, $user['id']]);
+
+            $intentosRestantes = 3 - $nuevosIntentos;
+            echo json_encode([
+                'success' => false, 
+                'message' => "Correo o contraseña incorrectos. Te quedan $intentosRestantes intento(s) antes de que la cuenta sea desactivada."
+            ]);
+        }
+        
+        usleep(500000);
+    }
     exit;
 }
 
-try {
-    // Consulta para verificar el usuario en la base de datos central o principal
-    $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE usuario = :usuario LIMIT 1");
-    $stmt->execute(['usuario' => $usuario]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+// --- 2. SOLICITAR RECUPERACIÓN DE CONTRASEÑA ---
+if ($accion === 'solicitar_recuperacion') {
+    $email = trim($_POST['email'] ?? '');
 
-    if ($user && password_verify($password, $user['password'])) {
-        
-        // Guardar datos básicos en la sesión
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['usuario'] = $user['usuario'];
-        $_SESSION['nombre'] = $user['nombre'] ?? '';
-
-        // Consultar los módulos activos permitidos para este usuario/rol
-        $stmtModulos = $pdo->prepare("SELECT modulo FROM permisos_usuario WHERE usuario_id = :id_usuario");
-        $stmtModulos->execute(['id_usuario' => $user['id']]);
-        $modulos = $stmtModulos->fetchAll(PDO::FETCH_COLUMN);
-
-        // Guardar los módulos en la sesión para que el menú principal los reconozca
-        $_SESSION['modulos_activos'] = $modulos;
-
-        echo json_encode([
-            "status" => "success", 
-            "message" => "Inicio de sesión exitoso",
-            "redirect" => "dashboard.php"
-        ]);
-    } else {
-        echo json_encode([
-            "status" => "error", 
-            "message" => "Usuario o contraseña incorrectos."
-        ]);
+    if (empty($email)) {
+        echo json_encode(['success' => false, 'message' => 'Por favor ingrese un correo electrónico']);
+        exit;
     }
 
-} catch (Exception $e) {
+    $stmt = $pdo->prepare("SELECT id, nombre FROM usuarios WHERE email = ? AND estado = 1");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($user) {
+        $token = bin2hex(random_bytes(32));
+        $expiracion = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+        $stmtUpdate = $pdo->prepare("UPDATE usuarios SET token_recuperacion = ?, token_expiracion = ? WHERE id = ?");
+        $stmtUpdate->execute([$token, $expiracion, $user['id']]);
+
+        $protocolo = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
+        $host = $_SERVER['HTTP_HOST'];
+        $enlace = "$protocolo://$host/views/reset-password.php?token=" . $token;
+
+        require '../phpmailer/Exception.php';
+        require '../phpmailer/PHPMailer.php';
+        require '../phpmailer/SMTP.php';
+
+        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+        try {
+            $mail->isSMTP();
+            $mail->Host       = $_ENV['MAIL_HOST'] ?? 'smtp.office365.com';
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $_ENV['MAIL_USER'] ?? '';         
+            $mail->Password   = $_ENV['MAIL_PASS'] ?? ''; 
+            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = $_ENV['MAIL_PORT'] ?? 587;
+
+            $mail->setFrom($_ENV['MAIL_FROM'] ?? 'inversionesja@misistemapos.com', $_ENV['MAIL_NAME'] ?? 'Sistema POS');
+            $mail->addAddress($email, $user['nombre']);
+
+            $mail->isHTML(true);
+            $mail->Subject = 'Recuperar Contrasena - Sistema POS';
+            $mail->Body    = "Hola <b>{$user['nombre']}</b>, <br><br> Has solicitado restablecer tu contrasena. Haz clic en el siguiente enlace para continuar (expira en 1 hora): <br><br><a href='$enlace'>$enlace</a>";
+
+            $mail->send();
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Error al enviar correo: ' . $mail->ErrorInfo
+            ]);
+            exit;
+        }
+    }
+
     echo json_encode([
-        "status" => "error", 
-        "message" => "Error en el servidor: " . $e->getMessage()
+        'success' => true, 
+        'message' => 'Si el correo está registrado, se han enviado las instrucciones a su bandeja.'
     ]);
+    exit;
+}
+
+// --- 3. ACTUALIZAR CONTRASEÑA TRAS RECUPERACIÓN ---
+if ($accion === 'actualizar_password') {
+    $token = $_POST['token'] ?? '';
+    $nuevoPassword = $_POST['password'] ?? '';
+
+    if (empty($token) || empty($nuevoPassword)) {
+        echo json_encode(['success' => false, 'message' => 'Datos incompletos']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE token_recuperacion = ? AND token_expiracion > NOW()");
+    $stmt->execute([$token]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user) {
+        echo json_encode(['success' => false, 'message' => 'El enlace de recuperación es inválido o ha expirado.']);
+        exit;
+    }
+
+    $passwordHash = password_hash($nuevoPassword, PASSWORD_DEFAULT);
+
+    $stmtUpdate = $pdo->prepare("UPDATE usuarios SET password = ?, token_recuperacion = NULL, token_expiracion = NULL, intentos_fallidos = 0, estado = 1 WHERE id = ?");
+    $stmtUpdate->execute([$passwordHash, $user['id']]);
+
+    echo json_encode(['success' => true, 'message' => 'Contraseña actualizada con éxito. Ya puedes iniciar sesión.']);
+    exit;
+}
+
+// --- 4. CERRAR SESIÓN (LOGOUT) ---
+if ($accion === 'logout') {
+    session_unset();
+    session_destroy();
+    echo json_encode(['success' => true]);
+    exit;
 }
 ?>
