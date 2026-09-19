@@ -1,5 +1,17 @@
 <?php
 // api/cotizaciones.php
+
+// 1. Validar que la empresa tenga contratado el módulo de préstamos
+$modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
+
+if (!in_array('cotizaciones', $modulos_permitidos)) {
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Acceso denegado: El módulo de Préstamos no está incluido en el plan de su empresa.'
+    ]);
+    exit; // Detiene la ejecución por completo
+}
+
 session_start();
 require_once '../config/conexion.php';
 
