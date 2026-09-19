@@ -43,8 +43,21 @@ $carrito = $data['carrito'];
 $pagos = $data['pagos'] ?? [];
 $ahorro_total = floatval($data['ahorro_total'] ?? 0);
 
+// ========== DATOS DE CRÉDITO ==========
+$esCredito          = !empty($data['es_credito']) || (!empty($data['plazo_meses']) && intval($data['plazo_meses']) > 0);
+$prima              = floatval($data['prima'] ?? 0);
+$plazo_meses        = intval($data['plazo_meses'] ?? 0);
+$monto_financiar    = floatval($data['monto_financiar'] ?? 0);
+$interes_total      = floatval($data['interes_total'] ?? 0);
+$cuota_mensual      = floatval($data['cuota_mensual'] ?? 0);
+$total_credito      = floatval($data['total_credito'] ?? 0);
+
+if ($cuota_mensual <= 0 && $plazo_meses > 0 && $total_credito > 0) {
+    $cuota_mensual = $total_credito / $plazo_meses;
+}
+
 try {
-    // 1. Obtener datos del cliente (incluyendo su límite de crédito si aplica)
+    // 1. Obtener datos del cliente
     $stmtCli = $pdo->prepare("SELECT Nombre, rtn_dni, limite_credito FROM clientes WHERE codigo_bp = ? LIMIT 1");
     $stmtCli->execute([$codigo_bp]);
     $cliente = $stmtCli->fetch(PDO::FETCH_ASSOC);
@@ -63,7 +76,7 @@ try {
         $totalVenta += ($precioFinal * intval($p['cantidad']));
     }
 
-    // 3. Calcular montos abonados, desgloses independientes y cambio
+    // 3. Calcular montos de pagos
     $totalAbonado = 0;
     $montoRecibidoEfectivo = 0;
     $montoEfectivoBruto = 0;
@@ -93,7 +106,7 @@ try {
     $numeroFacturaGenerado = null;
     $alertaRango = "";
 
-    // SI NO ES COTIZACIÓN NI ORDEN PENDIENTE, APLICAMOS REGLAS DEL SAR Y GENERAMOS FACTURA
+    // Generar factura solo si NO es cotización ni orden pendiente
     if (!$esCotizacion && !$esPendiente) {
         $stmtConf = $pdo->prepare("SELECT prefijo_factura, siguiente_correlativo, rango_maximo FROM configuracion LIMIT 1");
         $stmtConf->execute();
@@ -125,8 +138,9 @@ try {
         $stmtUpdateConf->execute([$nuevoCorrelativo]);
     }
 
-    // 4. Guardar Registro en ventas
+    // ========== 4. Guardar / Actualizar en ventas ==========
     if ($id_transaccion > 0) {
+        // UPDATE
         $sqlVenta = "UPDATE ventas SET  
                         numero_factura = COALESCE(:num_fac, numero_factura), 
                         cliente_codigo_bp = :cli_bp, 
@@ -142,27 +156,41 @@ try {
                         monto_abonado = :m_abon, 
                         monto_recibido = :m_rec, 
                         cambio_entregado = :cambio,
+                        es_credito = :es_credito,
+                        prima = :prima,
+                        plazo_meses = :plazo,
+                        monto_financiar = :m_fin,
+                        interes_total = :interes,
+                        cuota_mensual = :cuota,
+                        total_credito = :t_credito,
                         fecha_venta = CASE WHEN :num_fac_not_null IS NOT NULL THEN NOW() ELSE fecha_venta END
                      WHERE id_transaccion = :id_trans";
         
         $stmtV = $pdo->prepare($sqlVenta);
         $stmtV->execute([
-            'num_fac'         => $numeroFacturaGenerado,
-            'cli_bp'          => $codigo_bp,
-            'cli_ide'         => $cliente_identidad,
-            'cli_nom'         => $cliente_nombre,
-            'cli_rtn'         => $cliente_rtn,
-            'tip_com'         => $tipo_comprobante,
-            'total_v'         => $totalVenta,
-            'ahorro'          => $ahorro_total,
-            'met_pag'         => $metodoPrincipal,
-            'm_efec'          => $montoEfectivoTotal,
-            'm_tarj'          => $montoTarjetaTotal,
-            'm_abon'          => $totalAbonado,
-            'm_rec'           => $montoRecibidoEfectivo,
-            'cambio'          => $cambio,
-            'num_fac_not_null'=> $numeroFacturaGenerado,
-            'id_trans'        => $id_transaccion
+            'num_fac'          => $numeroFacturaGenerado,
+            'cli_bp'           => $codigo_bp,
+            'cli_ide'          => $cliente_identidad,
+            'cli_nom'          => $cliente_nombre,
+            'cli_rtn'          => $cliente_rtn,
+            'tip_com'          => $tipo_comprobante,
+            'total_v'          => $totalVenta,
+            'ahorro'           => $ahorro_total,
+            'met_pag'          => $metodoPrincipal,
+            'm_efec'           => $montoEfectivoTotal,
+            'm_tarj'           => $montoTarjetaTotal,
+            'm_abon'           => $totalAbonado,
+            'm_rec'            => $montoRecibidoEfectivo,
+            'cambio'           => $cambio,
+            'es_credito'       => $esCredito ? 1 : 0,
+            'prima'            => $prima,
+            'plazo'            => $plazo_meses,
+            'm_fin'            => $monto_financiar,
+            'interes'          => $interes_total,
+            'cuota'            => $cuota_mensual,
+            't_credito'        => $total_credito,
+            'num_fac_not_null' => $numeroFacturaGenerado,
+            'id_trans'         => $id_transaccion
         ]);
 
         $ventaId = $id_transaccion;
@@ -171,35 +199,47 @@ try {
         $pdo->prepare("DELETE FROM pagos_ventas WHERE venta_id = ?")->execute([$ventaId]);
 
     } else {
+        // INSERT
         $sqlVenta = "INSERT INTO ventas (
                         numero_factura, usuario_id, cliente_codigo_bp, cliente_identidad, 
                         cliente_nombre, cliente_rtn, tipo_comprobante, total, 
                         ahorro_total, metodo_pago, monto_efectivo, monto_tarjeta, 
-                        monto_abonado, monto_recibido, cambio_entregado, fecha_venta
+                        monto_abonado, monto_recibido, cambio_entregado,
+                        es_credito, prima, plazo_meses, monto_financiar, 
+                        interes_total, cuota_mensual, total_credito, fecha_venta
                      ) VALUES (
                         :num_fac, :usu_id, :cli_bp, :cli_ide, 
                         :cli_nom, :cli_rtn, :tip_com, :total_v, 
                         :ahorro, :met_pag, :m_efec, :m_tarj, 
-                        :m_abon, :m_rec, :cambio, NOW()
+                        :m_abon, :m_rec, :cambio,
+                        :es_credito, :prima, :plazo, :m_fin,
+                        :interes, :cuota, :t_credito, NOW()
                      )";
         
         $stmtV = $pdo->prepare($sqlVenta);
         $stmtV->execute([
-            'num_fac' => $numeroFacturaGenerado,
-            'usu_id'  => $usuarioId,
-            'cli_bp'  => $codigo_bp,
-            'cli_ide' => $cliente_identidad,
-            'cli_nom' => $cliente_nombre,
-            'cli_rtn' => $cliente_rtn,
-            'tip_com' => $tipo_comprobante,
-            'total_v' => $totalVenta,
-            'ahorro'  => $ahorro_total,
-            'met_pag' => $metodoPrincipal,
-            'm_efec'  => $montoEfectivoTotal,
-            'm_tarj'  => $montoTarjetaTotal,
-            'm_abon'  => $totalAbonado,
-            'm_rec'   => $montoRecibidoEfectivo,
-            'cambio'  => $cambio
+            'num_fac'     => $numeroFacturaGenerado,
+            'usu_id'      => $usuarioId,
+            'cli_bp'      => $codigo_bp,
+            'cli_ide'     => $cliente_identidad,
+            'cli_nom'     => $cliente_nombre,
+            'cli_rtn'     => $cliente_rtn,
+            'tip_com'     => $tipo_comprobante,
+            'total_v'     => $totalVenta,
+            'ahorro'      => $ahorro_total,
+            'met_pag'     => $metodoPrincipal,
+            'm_efec'      => $montoEfectivoTotal,
+            'm_tarj'      => $montoTarjetaTotal,
+            'm_abon'      => $totalAbonado,
+            'm_rec'       => $montoRecibidoEfectivo,
+            'cambio'      => $cambio,
+            'es_credito'  => $esCredito ? 1 : 0,
+            'prima'       => $prima,
+            'plazo'       => $plazo_meses,
+            'm_fin'       => $monto_financiar,
+            'interes'     => $interes_total,
+            'cuota'       => $cuota_mensual,
+            't_credito'   => $total_credito
         ]);
 
         $ventaId = $pdo->lastInsertId();
@@ -247,25 +287,17 @@ try {
         }
     }
 
-    // 7. GESTIÓN AUTOMÁTICA DE CONTRATOS, CUOTAS Y LÍMITE DE CRÉDITO DEL CLIENTE
-    $esCredito = !empty($data['es_credito']) || (!empty($data['plazo_meses']) && intval($data['plazo_meses']) > 0);
-
-    if ($esCredito && !$esCotizacion) {
-        $plazo_meses = intval($data['plazo_meses'] ?? 1);
-        $prima = floatval($data['prima'] ?? 0);
-        $monto_financiar = floatval($data['monto_financiar'] ?? ($totalVenta - $prima));
+    // 7. CREAR CONTRATO SOLO SI ES VENTA DEFINITIVA (NO pendiente ni cotización)
+    if ($esCredito && !$esCotizacion && !$esPendiente) {
         $porcentaje_interes = floatval($data['porcentaje_interes'] ?? 0);
-        $total_credito = floatval($data['total_credito'] ?? $monto_financiar);
         $fecha_inicio = $data['fecha_inicio'] ?? date('Y-m-d');
         
-        // Crear descripción textual combinada de los productos comprados
         $nombres_prods = [];
         foreach ($carrito as $p) {
             $nombres_prods[] = $p['cantidad'] . 'x ' . ($p['nombre'] ?? 'Producto');
         }
         $producto_descripcion = implode(', ', $nombres_prods);
 
-        // A. Insertar cabecera del contrato
         $sqlContrato = "INSERT INTO contratos (
                             codigo_bp, producto_descripcion, total_factura, prima, 
                             monto_financiar, porcentaje_interes, total_credito, 
@@ -289,7 +321,6 @@ try {
 
         $contrato_id = $pdo->lastInsertId();
 
-        // B. Generar las cuotas mes a mes en cuotas_contrato
         $monto_cuota = $plazo_meses > 0 ? ($total_credito / $plazo_meses) : $total_credito;
         
         $sqlCuota = "INSERT INTO cuotas_contrato (
@@ -301,7 +332,6 @@ try {
 
         for ($i = 1; $i <= $plazo_meses; $i++) {
             $fecha_vencimiento = date('Y-m-d', strtotime("+$i month", strtotime($fecha_inicio)));
-            
             $stmtCuota->execute([
                 $contrato_id,
                 $i,
@@ -310,11 +340,9 @@ try {
             ]);
         }
 
-        // C. Restar el valor financiado (o total del crédito) del límite de crédito del cliente
-        // Nota: Si manejas el límite como saldo disponible que disminuye al comprar, usamos GREATEST para evitar negativos.
+        // Restar del límite de crédito del cliente
         $sqlRestarLimite = "UPDATE clientes SET limite_credito = GREATEST(0, limite_credito - ?) WHERE codigo_bp = ?";
         $stmtRestar = $pdo->prepare($sqlRestarLimite);
-        // Puedes cambiar $monto_financiar por $total_credito dependiendo de si restas el capital neto o el total con intereses
         $stmtRestar->execute([$monto_financiar, $codigo_bp]);
     }
 

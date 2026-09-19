@@ -1076,10 +1076,19 @@ try {
 
         // --- CREAR / ACTUALIZAR ORDEN PENDIENTE ---
         function crearOrdenPendiente() {
-            if (carrito.length === 0) {
-                alert('El carrito está vacío. Agregue productos para guardar la orden.');
+        if (carrito.length === 0) {
+            alert('El carrito está vacío. Agregue productos para guardar la orden.');
+            return;
+        }
+
+        // NUEVO: Obligar datos de crédito
+        if (tipoModalidadVenta === 'credito') {
+            if (!datosCreditoSeleccionado) {
+                alert('⚠️ Esta orden es a CRÉDITO.\n\nDebe calcular y aplicar las condiciones de crédito antes de crear la orden.');
+                abrirModalCredito();
                 return;
             }
+        }
 
             const urlParams = new URLSearchParams(window.location.search);
             const idTransaccion = urlParams.get('id_transaccion') || urlParams.get('id');
@@ -1115,6 +1124,8 @@ try {
                 plazo_meses: esVentaCredito ? datosCreditoSeleccionado.meses : 0,
                 prima: esVentaCredito ? datosCreditoSeleccionado.prima : 0,
                 monto_financiar: esVentaCredito ? datosCreditoSeleccionado.capitalFinanciable : 0,
+                interes_total: esVentaCredito ? datosCreditoSeleccionado.interesTotal : 0,
+                cuota_mensual: esVentaCredito ? datosCreditoSeleccionado.cuotaMensual : 0,
                 total_credito: esVentaCredito ? datosCreditoSeleccionado.montoTotalConInteres : 0,
 
                 datos_credito: datosCreditoSeleccionado,
@@ -1232,6 +1243,8 @@ try {
                 plazo_meses: esVentaCredito ? datosCreditoSeleccionado.meses : 0,
                 prima: esVentaCredito ? datosCreditoSeleccionado.prima : 0,
                 monto_financiar: esVentaCredito ? datosCreditoSeleccionado.capitalFinanciable : 0,
+                interes_total: esVentaCredito ? datosCreditoSeleccionado.interesTotal : 0,
+                cuota_mensual: esVentaCredito ? datosCreditoSeleccionado.cuotaMensual : 0,
                 total_credito: esVentaCredito ? datosCreditoSeleccionado.montoTotalConInteres : 0,
 
                 datos_credito: datosCreditoSeleccionado,

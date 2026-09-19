@@ -12,17 +12,18 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-// 3. VALIDAR QUE LA EMPRESA TENGA CONTRATADO EL MÓDULO DE COTIZACIONES
+// 3. VALIDAR QUE LA EMPRESA TENGA CONTRATADO EL MÓDULO
 $modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
 
 if (!in_array('transacciones', $modulos_permitidos)) {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false, 
-        'message' => 'Acceso denegado: El módulo de Cotizaciones no está incluido en el plan de su empresa.'
+        'message' => 'Acceso denegado: El módulo de Transacciones no está incluido en el plan de su empresa.'
     ]);
-    exit; // Detiene la ejecución por completo
+    exit;
 }
+
 require_once '../config/conexion.php';
 
 // Validar sesión activa
@@ -31,16 +32,16 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-// Validar rol para saber si es administrador o vendedor
+// Validar rol
 $rolActual = strtolower($_SESSION['usuario_rol'] ?? 'vendedor');
 $esAdmin = ($rolActual === 'admin' || $rolActual === 'administrador');
 
-// Capturar parámetros de filtro enviados por GET
+// Capturar parámetros de filtro
 $busqueda = trim($_GET['buscar'] ?? '');
 $fechaInicio = $_GET['fecha_inicio'] ?? '';
 $fechaFin = $_GET['fecha_fin'] ?? '';
 
-// Construir la consulta SQL dinámica con filtros
+// Construir la consulta SQL
 $sql = "SELECT v.*, u.nombre as cajero FROM ventas v JOIN usuarios u ON v.usuario_id = u.id WHERE 1=1";
 $params = [];
 
@@ -124,14 +125,13 @@ $ventas = $stmt;
                     <i class="fa-solid fa-print text-xs"></i> Imprimir Reporte
                 </button>
                 <?php endif; ?>
-                <!-- Botón Actualizar que limpia los filtros -->
                 <a href="transacciones.php" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-medium text-xs sm:text-sm px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 no-underline">
                     <i class="fa-solid fa-sync text-xs"></i> Actualizar
                 </a>
             </div>
         </div>
 
-        <!-- FILTROS AVANZADOS (BÚSQUEDA Y FECHAS) -->
+        <!-- FILTROS -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-6 no-print">
             <form method="GET" action="transacciones.php" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
                 <div class="lg:col-span-5">
@@ -159,7 +159,7 @@ $ventas = $stmt;
             </form>
         </div>
 
-        <!-- TABLA PRINCIPAL DE TRANSACCIONES -->
+        <!-- TABLA PRINCIPAL -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-grow">
             <div class="overflow-x-auto">
                 <table id="tablaTransacciones" class="w-full text-left border-collapse">
@@ -230,9 +230,18 @@ $ventas = $stmt;
                                         <i class="fa-solid fa-file-invoice text-xs"></i> Ver Devolución
                                     </a>
                                 <?php elseif($esOrdenPendiente): ?>
-                                    <a href="pos.php?id_transaccion=<?php echo $v['id_transaccion']; ?>" class="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-medium text-xs px-3.5 py-2 rounded-xl transition shadow-xs">
-                                        <i class="fa-solid fa-pen-to-square text-xs"></i> Editar / Facturar
-                                    </a>
+                                    <!-- AQUÍ ESTÁ EL CAMBIO: Dos botones -->
+                                    <div class="flex flex-col gap-1.5 items-center">
+                                        <a href="pos.php?id_transaccion=<?php echo $v['id_transaccion']; ?>" 
+                                           class="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-medium text-xs px-3.5 py-2 rounded-xl transition shadow-xs">
+                                            <i class="fa-solid fa-pen-to-square text-xs"></i> Editar / Facturar
+                                        </a>
+                                        <a href="imprimir_cotizacion.php?id_transaccion=<?php echo $v['id_transaccion']; ?>" 
+                                           target="_blank"
+                                           class="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-xs px-3.5 py-2 rounded-xl transition shadow-xs">
+                                            <i class="fa-solid fa-file-lines text-xs"></i> Imprimir Cotización
+                                        </a>
+                                    </div>
                                 <?php else: ?>
                                     <a href="imprimir_factura.php?id_transaccion=<?php echo $v['id_transaccion']; ?>" target="_blank" class="inline-flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs px-3.5 py-2 rounded-xl transition shadow-xs">
                                         <i class="fa-solid fa-eye text-xs"></i> Ver Factura
