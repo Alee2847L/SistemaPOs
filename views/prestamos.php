@@ -65,7 +65,11 @@ try {
                 <span class="text-[11px] text-slate-400 font-medium"><?php echo $nombre_empresa; ?></span>
             </div>
         </div>
-        <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3">
+            <button onclick="imprimirReportePrestamos()" 
+                    class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-medium text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
+                <i class="fa-solid fa-print"></i> Imprimir Reporte
+            </button>
             <a href="clientes.php" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
                 <i class="fa-solid fa-users"></i> Ir a Clientes
             </a>
@@ -335,6 +339,97 @@ try {
             document.getElementById('inputBuscarPrestamo').value = '';
             cargarPrestamos();
         }
+
+        function imprimirReportePrestamos() {
+    const fechaInicio = document.getElementById('filtroFechaInicio')?.value || '';
+    const fechaFin = document.getElementById('filtroFechaFin')?.value || '';
+    const busqueda = document.getElementById('inputBuscarPrestamo')?.value || '';
+
+    // Datos que se están mostrando actualmente
+    const datos = listaPrestamosOriginal.length > 0 ? listaPrestamosOriginal : [];
+
+    if (datos.length === 0) {
+        alert('No hay préstamos para imprimir con los filtros actuales.');
+        return;
+    }
+
+    let filas = '';
+    datos.forEach(p => {
+        filas += `
+            <tr>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0;">#${p.id}</td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0;">
+                    <b>${p.codigo_bp}</b><br>
+                    <span style="font-size:11px;color:#64748b;">${p.cliente_nombre || 'Cliente'}</span>
+                </td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;">${p.producto_descripcion || '-'}</td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;">L. ${Number(p.monto_financiar).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:bold;color:#7c3aed;">L. ${Number(p.total_credito).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${p.plazo_meses} cuotas</td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${p.estado}</td>
+            </tr>
+        `;
+    });
+
+    const rangoFechas = (fechaInicio || fechaFin) 
+        ? `Período: ${fechaInicio || 'Inicio'} → ${fechaFin || 'Hoy'}` 
+        : 'Todos los registros';
+
+    const ventana = window.open('', '', 'width=900,height=700');
+    ventana.document.write(`
+        <html>
+        <head>
+            <title>Reporte de Préstamos</title>
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 13px; color: #1e293b; padding: 25px; }
+                h1 { color: #6d28d9; margin-bottom: 5px; }
+                .subtitulo { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                th { background: #f1f5f9; text-align: left; padding: 10px 8px; font-size: 11px; text-transform: uppercase; border-bottom: 2px solid #cbd5e1; }
+                td { font-size: 12px; }
+                .footer { margin-top: 30px; font-size: 11px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+                @media print {
+                    body { padding: 10px; }
+                }
+            </style>
+        </head>
+        <body>
+            <h1>Reporte de Préstamos y Créditos</h1>
+            <div class="subtitulo">
+                ${rangoFechas}<br>
+                Generado el: ${new Date().toLocaleString('es-HN')}
+                ${busqueda ? `<br>Filtro de búsqueda: "${busqueda}"` : ''}
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Cliente</th>
+                        <th>Descripción</th>
+                        <th style="text-align:right;">Monto Financiar</th>
+                        <th style="text-align:right;">Total con Interés</th>
+                        <th style="text-align:center;">Plazo</th>
+                        <th style="text-align:center;">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filas}
+                </tbody>
+            </table>
+
+            <div class="footer">
+                Total de registros: ${datos.length} — Sistema POS
+            </div>
+        </body>
+        </html>
+    `);
+    ventana.document.close();
+
+    setTimeout(() => {
+        ventana.print();
+    }, 400);
+}
 
         function renderizarTablaPrestamos(prestamos) {
             const tbody = document.getElementById('tablaPrestamos');
