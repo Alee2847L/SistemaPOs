@@ -1,6 +1,28 @@
 <?php
 // views/clientes.php
-session_start();
+// 1. INICIAR LA SESIÓN PRIMERO QUE TODO
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// 2. VALIDAR QUE EXISTA LA SESIÓN DEL USUARIO ANTES DE NADA
+if (!isset($_SESSION['usuario_id'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['success' => false, 'message' => 'No autorizado']);
+    exit;
+}
+
+// 3. VALIDAR QUE LA EMPRESA TENGA CONTRATADO EL MÓDULO DE COTIZACIONES
+$modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
+
+if (!in_array('clientes', $modulos_permitidos)) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Acceso denegado: El módulo de Cotizaciones no está incluido en el plan de su empresa.'
+    ]);
+    exit; // Detiene la ejecución por completo
+}
 require_once '../config/conexion.php';
 
 if (!isset($_SESSION['usuario_id'])) {
