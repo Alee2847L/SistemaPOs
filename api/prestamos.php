@@ -1,77 +1,63 @@
 <?php
 // api/prestamos.php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-header('Content-Type: application/json; charset=utf-8');
-
-try {
-    require_once __DIR__ . '/../config/conexion.php';
-} catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Error de conexión: ' . $e->getMessage()]);
-    exit;
-}
-
+header('Content-Type: application/json');
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+require_once __DIR__ . '/../config/conexion.php';
 
-$usuarioId = $_SESSION['usuario_id'] ?? null;
-if (!$usuarioId) {
-    echo json_encode(['success' => false, 'message' => 'Sesión expirada.']);
+if (!isset($_SESSION['usuario_id'])) {
+    echo json_encode(['success' => false, 'message' => 'No autorizado']);
     exit;
 }
 
 $accion = $_GET['accion'] ?? '';
 
+// 1. Listar contratos existentes haciendo JOIN con clientes
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'listar') {
     try {
         $stmt = $pdo->query("
-            SELECT c.*, cl.Nombre AS cliente_nombre, cl.rtn_dni 
-            FROM contratos c 
-            LEFT JOIN clientes cl ON c.codigo_bp = cl.codigo_bp 
+            SELECT c.*, cl.Nombre as cliente_nombre 
+            FROM contratos c
+            LEFT JOIN clientes cl ON c.codigo_bp = cl.codigo_bp
             ORDER BY c.id DESC
         ");
-        $prestamos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        echo json_encode(['success' => true, 'data' => $prestamos]);
+        $contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'data' => $contratos]);
     } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Error al consultar contratos: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
     }
     exit;
 }
 
+// 2. Guardar nuevo contrato (préstamo) y sus cuotas automáticamente
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $raw = file_get_contents('php://input');
-    $data = json_decode($raw, true);
-
-    if (!$data || empty($data['codigo_bp']) || empty($data['monto_financiar'])) {
-        echo json_encode(['success' => false, 'message' => 'Faltan datos requeridos.']);
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $codigo_bp = $input['codigo_bp'] ?? '';
+    $producto_descripcion = $input['producto_descripcion'] ?? '';
+    $total_factura = floatval($input['total_factura'] ?? 0);
+    $prima = floatval($input['prima'] ?? 0);
+    $monto_financiar = floatval($input['monto_financiar'] ?? 0);
+    $porcentaje_interes = floatval($input['porcentaje_interes'] ?? 0);
+    $total_credito = floatval($input['total_credito'] ?? 0);
+    $numero_cuotas = intval($input['numero_cuotas'] ?? 1);
+    $frecuencia = $input['frecuencia'] ?? 'mensual';
+    
+    if (empty($codigo_bp) || $monto_financiar <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Datos incompletos o inválidos.']);
         exit;
     }
-
-    $codigo_bp = trim($data['codigo_bp']);
-    $producto_descripcion = trim($data['producto_descripcion'] ?? 'Préstamo personal');
-    $total_factura = floatval($data['total_factura'] ?? 0);
-    $prima = floatval($data['prima'] ?? 0);
-    $monto_financiar = floatval($data['monto_financiar'] ?? 0);
-    $porcentaje_interes = floatval($data['porcentaje_interes'] ?? 25);
-    $total_credito = floatval($data['total_credito'] ?? $monto_financiar);
-    $numero_cuotas = intval($data['numero_cuotas'] ?? 1);
-    $frecuencia = strtolower(trim($data['frecuencia'] ?? 'mensual'));
-    $fecha_inicio = date('Y-m-d');
 
     try {
         $pdo->beginTransaction();
 
-        $sqlContrato = "INSERT INTO contratos (
-                            codigo_bp, producto_descripcion, total_factura, prima, 
-                            monto_financiar, porcentaje_interes, total_credito, 
-                            plazo_meses, fecha_inicio, estado
-                        ) VALUES (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVO'
-                        )";
-        
-        $stmtContrato = $pdo->prepare($sqlContrato);
-        $stmtContrato->execute([
+        // Insertar en contratos especificando tipo_contrato = 'prestamo'
+        $stmt = $pdo->prepare("
+            INSERT INTO contratos (codigo_bp, producto_descripcion, total_factura, prima, monto_financiar, porcentaje_interes, total_credito, plazo_meses, fecha_inicio, estado, tipo_contrato)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVO', 'prestamo')
+        ");
+        $stmt->execute([
             $codigo_bp,
             $producto_descripcion,
             $total_factura,
@@ -79,57 +65,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $monto_financiar,
             $porcentaje_interes,
             $total_credito,
-            $numero_cuotas,
-            $fecha_inicio
+            $numero_cuotas
         ]);
-
+        
         $contrato_id = $pdo->lastInsertId();
 
+        // Generar las cuotas automáticamente
         $monto_cuota = $numero_cuotas > 0 ? ($total_credito / $numero_cuotas) : $total_credito;
         
-        $sqlCuota = "INSERT INTO cuotas_contrato (
-                        contrato_id, numero_cuota, monto_cuota, fecha_vencimiento, monto_pagado, estado
-                     ) VALUES (
-                        ?, ?, ?, ?, 0.00, 'PENDIENTE'
-                     )";
-        $stmtCuota = $pdo->prepare($sqlCuota);
+        $stmtCuota = $pdo->prepare("
+            INSERT INTO cuotas (contrato_id, numero_cuota, monto_cuota, fecha_vencimiento, estado)
+            VALUES (?, ?, ?, ?, 'PENDIENTE')
+        ");
 
         for ($i = 1; $i <= $numero_cuotas; $i++) {
-            if ($frecuencia === 'semanal') {
-                $dias = $i * 7;
-                $fecha_vencimiento = date('Y-m-d', strtotime("+$dias days", strtotime($fecha_inicio)));
-            } elseif ($frecuencia === 'quincenal') {
+            if ($frecuencia === 'mensual') {
+                $fechaVencimiento = date('Y-m-d', strtotime("+$i month"));
+            } else if ($frecuencia === 'quincenal') {
                 $dias = $i * 15;
-                $fecha_vencimiento = date('Y-m-d', strtotime("+$dias days", strtotime($fecha_inicio)));
-            } else {
-                $fecha_vencimiento = date('Y-m-d', strtotime("+$i month", strtotime($fecha_inicio)));
+                $fechaVencimiento = date('Y-m-d', strtotime("+$dias days"));
+            } else { // semanal
+                $dias = $i * 7;
+                $fechaVencimiento = date('Y-m-d', strtotime("+$dias days"));
             }
-            
-            $stmtCuota->execute([
-                $contrato_id,
-                $i,
-                $monto_cuota,
-                $fecha_vencimiento
-            ]);
-        }
 
-        $sqlRestarLimite = "UPDATE clientes SET limite_credito = GREATEST(0, limite_credito - ?) WHERE codigo_bp = ?";
-        $stmtRestar = $pdo->prepare($sqlRestarLimite);
-        $stmtRestar->execute([$monto_financiar, $codigo_bp]);
+            $stmtCuota->execute([$contrato_id, $i, $monto_cuota, $fechaVencimiento]);
+        }
 
         $pdo->commit();
-
-        echo json_encode([
-            'success' => true,
-            'contrato_id' => $contrato_id,
-            'message' => 'Préstamo generado correctamente.'
-        ]);
-
+        echo json_encode(['success' => true, 'message' => 'Préstamo y cuotas registradas con éxito']);
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        echo json_encode(['success' => false, 'message' => 'Error en la base de datos: ' . $e->getMessage()]);
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Error al guardar: ' . $e->getMessage()]);
     }
     exit;
 }
