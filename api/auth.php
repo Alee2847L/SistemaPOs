@@ -61,10 +61,35 @@ if ($accion === 'login') {
         // Prevenir fijación de sesión
         session_regenerate_id(true);
 
-        $_SESSION['usuario_id']     = $user['id'];
-        $_SESSION['usuario_nombre'] = $user['nombre'];
-        $_SESSION['usuario_email']  = $user['email'];
-        $_SESSION['usuario_rol']    = $user['rol'];
+        // --- OBTENER LOS MÓDULOS ACTIVOS DE LA BASE DE DATOS CENTRAL ---
+        $modulosActivos = [];
+        try {
+            // Conexión temporal a la base de datos central (ajusta usuario/password si difieren)
+            $pdoCentral = new PDO("mysql:host=localhost;dbname=pos_central;charset=utf8mb4", "root", ""); 
+            $pdoCentral->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // Obtenemos el nombre de la base de datos actual en la que está logueándose el usuario
+            $nombre_bd_actual = $pdo->query("SELECT DATABASE()")->fetchColumn();
+            
+            $stmtCentral = $pdoCentral->prepare("SELECT modulos_activos FROM clientes WHERE nombre_bd = ?");
+            $stmtCentral->execute([$nombre_bd_actual]);
+            $rowCliente = $stmtCentral->fetch(PDO::FETCH_ASSOC);
+
+            if ($rowCliente && !empty($rowCliente['modulos_activos'])) {
+                // Decodificamos el JSON de la BD central (ej: ["pos", "prestamos"])
+                $modulosActivos = json_decode($rowCliente['modulos_activos'], true) ?? [];
+            }
+        } catch (Exception $e) {
+            // Si ocurre algún detalle con la central, por seguridad dejamos vacío o solo POS
+            $modulosActivos = ['pos']; 
+        }
+
+        // --- GUARDAR DATOS Y MÓDULOS EN LAS VARIABLES DE SESIÓN ---
+        $_SESSION['usuario_id']      = $user['id'];
+        $_SESSION['usuario_nombre']  = $user['nombre'];
+        $_SESSION['usuario_email']   = $user['email'];
+        $_SESSION['usuario_rol']     = $user['rol'];
+        $_SESSION['modulos_activos'] = $modulosActivos; // <--- Módulos listos para validar en todo el sistema
 
         echo json_encode(['success' => true, 'rol' => $user['rol']]);
     } else {
@@ -123,7 +148,6 @@ if ($accion === 'solicitar_recuperacion') {
         $protocolo = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
         $host = $_SERVER['HTTP_HOST'];
         $enlace = "$protocolo://$host/views/reset-password.php?token=" . $token;
-
 
         // --- CONFIGURACIÓN DE PHPMailer CON MICROSOFT 365 SMTP (USANDO .ENV) ---
         require '../phpmailer/Exception.php';
