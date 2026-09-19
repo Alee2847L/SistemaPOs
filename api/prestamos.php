@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $monto_cuota = $numero_cuotas > 0 ? ($total_credito / $numero_cuotas) : $total_credito;
         
         $stmtCuota = $pdo->prepare("
-            INSERT INTO cuotas (contrato_id, numero_cuota, monto_cuota, fecha_vencimiento, estado)
+            INSERT INTO cuotas_contrato (contrato_id, numero_cuota, monto_cuota, fecha_vencimiento, estado)
             VALUES (?, ?, ?, ?, 'PENDIENTE')
         ");
 
