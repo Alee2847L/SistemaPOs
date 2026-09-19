@@ -12,7 +12,8 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 $rolActual =$_SESSION['usuario_rol'] ?? 'vendedor';
-$es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' \vert{}\vert{} strtolower($_SESSION['usuario_rol']) === 'administrador'));
+// ✅ CÓMO DEBE QUEDAR:
+$es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
 $nombre_empresa = "INVERSIONES J.";
 try {
