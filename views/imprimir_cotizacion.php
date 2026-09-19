@@ -24,12 +24,12 @@ if (!$venta) {
     die('Orden no encontrada');
 }
 
-// Obtener detalles
-$$stmtDet = $pdo->prepare("
-SELECT d.*, p.nombre, p.codigo_barra
-FROM detalle_ventas d 
-LEFT JOIN productos p ON d.producto_id = p.id 
-WHERE d.venta_id = ?
+// Obtener detalles (con codigo_barra)
+$stmtDet = $pdo->prepare("
+    SELECT d.*, p.nombre, p.codigo_barra
+    FROM detalle_ventas d 
+    LEFT JOIN productos p ON d.producto_id = p.id 
+    WHERE d.venta_id = ?
 ");
 $stmtDet->execute([$id]);
 $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
@@ -45,7 +45,7 @@ try {
     }
 } catch (Exception $e) {}
 
-$esCredito = (int)$venta['es_credito'] === 1;
+$esCredito = (int)($venta['es_credito'] ?? 0) === 1;
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -113,6 +113,7 @@ $esCredito = (int)$venta['es_credito'] === 1;
         <table>
             <thead>
                 <tr>
+                    <th>Código</th>
                     <th>Producto</th>
                     <th style="text-align:center;">Cant.</th>
                     <th style="text-align:right;">Precio</th>
@@ -123,6 +124,7 @@ $esCredito = (int)$venta['es_credito'] === 1;
             <tbody>
                 <?php foreach ($detalles as $d): ?>
                 <tr>
+                    <td><?php echo htmlspecialchars($d['codigo_barra'] ?? '-'); ?></td>
                     <td><?php echo htmlspecialchars($d['nombre'] ?? 'Producto'); ?></td>
                     <td style="text-align:center;"><?php echo $d['cantidad']; ?></td>
                     <td style="text-align:right;">L. <?php echo number_format($d['precio_unitario'], 2); ?></td>
@@ -135,7 +137,7 @@ $esCredito = (int)$venta['es_credito'] === 1;
 
         <div class="totales">
             <div>Subtotal: <strong>L. <?php echo number_format($venta['total'], 2); ?></strong></div>
-            <?php if ($venta['ahorro_total'] > 0): ?>
+            <?php if (($venta['ahorro_total'] ?? 0) > 0): ?>
             <div style="color: #059669;">Ahorro: L. <?php echo number_format($venta['ahorro_total'], 2); ?></div>
             <?php endif; ?>
             <div class="total-final">TOTAL: L. <?php echo number_format($venta['total'], 2); ?></div>
@@ -147,28 +149,28 @@ $esCredito = (int)$venta['es_credito'] === 1;
             <div class="credito-grid">
                 <div class="credito-item">
                     <div class="label">Prima / Enganche</div>
-                    <div class="valor">L. <?php echo number_format($venta['prima'], 2); ?></div>
+                    <div class="valor">L. <?php echo number_format($venta['prima'] ?? 0, 2); ?></div>
                 </div>
                 <div class="credito-item">
                     <div class="label">Capital a Financiar</div>
-                    <div class="valor">L. <?php echo number_format($venta['monto_financiar'], 2); ?></div>
+                    <div class="valor">L. <?php echo number_format($venta['monto_financiar'] ?? 0, 2); ?></div>
                 </div>
                 <div class="credito-item">
                     <div class="label">Interés Total</div>
-                    <div class="valor">L. <?php echo number_format($venta['interes_total'], 2); ?></div>
+                    <div class="valor">L. <?php echo number_format($venta['interes_total'] ?? 0, 2); ?></div>
                 </div>
                 <div class="credito-item">
                     <div class="label">Total Crédito</div>
-                    <div class="valor">L. <?php echo number_format($venta['total_credito'], 2); ?></div>
+                    <div class="valor">L. <?php echo number_format($venta['total_credito'] ?? 0, 2); ?></div>
                 </div>
                 <div class="credito-item">
                     <div class="label">Plazo</div>
-                    <div class="valor"><?php echo $venta['plazo_meses']; ?> meses</div>
+                    <div class="valor"><?php echo $venta['plazo_meses'] ?? 0; ?> meses</div>
                 </div>
                 <div class="credito-item">
                     <div class="label">Cuota Mensual</div>
                     <div class="valor" style="color: #1e40af; font-size: 15px;">
-                        L. <?php echo number_format($venta['cuota_mensual'], 2); ?>
+                        L. <?php echo number_format($venta['cuota_mensual'] ?? 0, 2); ?>
                     </div>
                 </div>
             </div>
@@ -188,10 +190,5 @@ $esCredito = (int)$venta['es_credito'] === 1;
             </button>
         </div>
     </div>
-
-    <script>
-        // Auto-imprimir al abrir (opcional)
-        // window.onload = () => window.print();
-    </script>
 </body>
 </html>
