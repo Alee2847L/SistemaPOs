@@ -133,7 +133,7 @@ try {
                     </div>
                     <?php endif; ?>
 
-                    <!-- COTIZACIONES Y ÓRDENES -->
+                    <!-- COTIZACIONES Y ÓRDENES (Condicionado) -->
                     <?php if (in_array('cotizaciones', $modulos_activos)): ?>
                     <div onclick="abrirModulo('cotizaciones', 'Cotizaciones y Órdenes', 'views/cotizaciones.php', '📝')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Cotizaciones y Órdenes">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-blue-600 group-hover:text-white">📝</div>
@@ -210,7 +210,7 @@ try {
                     </div>
                     <?php endif; ?>
 
-                    <!-- Módulos Exclusivos para Administradores (Validan tanto ser admin como tener el módulo activo) -->
+                    <!-- Módulos Exclusivos para Administradores -->
                     <?php if ($es_admin && in_array('auditoria', $modulos_activos)): ?>
                     <div onclick="abrirModulo('auditoria_inventario', 'Auditoría Inventario', 'views/auditoria_inventario.php', '📋')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Auditoría Inventario">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-cyan-600 group-hover:text-white">📋</div>
