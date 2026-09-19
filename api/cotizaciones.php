@@ -1,29 +1,35 @@
 <?php
 // api/cotizaciones.php
 
-// 1. Validar que la empresa tenga contratado el módulo de préstamos
+// 1. INICIAR LA SESIÓN PRIMERO QUE TODO
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// 2. VALIDAR QUE EXISTA LA SESIÓN DEL USUARIO ANTES DE NADA
+if (!isset($_SESSION['usuario_id'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['success' => false, 'message' => 'No autorizado']);
+    exit;
+}
+
+// 3. VALIDAR QUE LA EMPRESA TENGA CONTRATADO EL MÓDULO DE COTIZACIONES
 $modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
 
 if (!in_array('cotizaciones', $modulos_permitidos)) {
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false, 
-        'message' => 'Acceso denegado: El módulo de Préstamos no está incluido en el plan de su empresa.'
+        'message' => 'Acceso denegado: El módulo de Cotizaciones no está incluido en el plan de su empresa.'
     ]);
     exit; // Detiene la ejecución por completo
 }
 
-session_start();
 require_once '../config/conexion.php';
 
 // Limpiar cualquier salida previa para evitar errores de sintaxis JSON
 if (ob_get_length()) ob_clean();
 header('Content-Type: application/json; charset=utf-8');
-
-// Validar que exista la sesión del usuario
-if (!isset($_SESSION['usuario_id'])) {
-    echo json_encode(['success' => false, 'message' => 'No autorizado']);
-    exit;
-}
 
 $accion = $_REQUEST['accion'] ?? '';
 $rolUsuario = $_SESSION['usuario_rol'] ?? 'vendedor';
@@ -53,7 +59,6 @@ if ($accion === 'listar_productos_proveedores') {
 
         $resultado = [];
         foreach ($productos as $prod) {
-            // 1. Buscar en la tabla pivote producto_proveedor
             $stmt_prov = $pdo->prepare("
                 SELECT pp.proveedor_id, p.nombre_empresa, pp.precio 
                 FROM producto_proveedor pp 
@@ -63,7 +68,6 @@ if ($accion === 'listar_productos_proveedores') {
             $stmt_prov->execute([$prod['id']]);
             $proveedores_precios = $stmt_prov->fetchAll(PDO::FETCH_ASSOC);
 
-            // 2. RESPALDO: Si no hay registros en la tabla pivote pero sí tiene un proveedor_id directo en la tabla productos
             if (empty($proveedores_precios) && !empty($prod['proveedor_directo'])) {
                 $stmt_dir = $pdo->prepare("SELECT id as proveedor_id, nombre_empresa FROM proveedores WHERE id = ?");
                 $stmt_dir->execute([$prod['proveedor_directo']]);
@@ -78,7 +82,6 @@ if ($accion === 'listar_productos_proveedores') {
                 }
             }
 
-            // 3. Si de plano no tiene ningún proveedor asignado en ninguna parte
             if (empty($proveedores_precios)) {
                 $proveedores_precios = [
                     [
@@ -136,7 +139,7 @@ if ($accion === 'obtener') {
     exit;
 }
 
-// --- 3. GUARDAR / CREAR COTIZACIÓN (CON PRODUCTO Y PROVEEDOR SELECCIONADO) ---
+// --- 3. GUARDAR / CREAR COTIZACIÓN ---
 if ($accion === 'guardar') {
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -167,7 +170,6 @@ if ($accion === 'guardar') {
             exit;
         }
 
-        // Insertar Cotización principal
         $sql_cot = "INSERT INTO cotizaciones (numero_cotizacion, fecha_cotizacion, cliente_nombre, cliente_rtn, proyecto_nombre, clasificacion_proyecto, ancho, longitud, subtotal_general, total_general, estado, usuario_creacion) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GUARDADA', ?)";
         
@@ -180,7 +182,6 @@ if ($accion === 'guardar') {
         
         $cotizacion_id = $pdo->lastInsertId();
 
-        // Insertar Detalles
         $sql_det = "INSERT INTO cotizacion_detalles (cotizacion_id, producto_id, proveedor_id, tipo_item, descripcion, unidad, cantidad, costo_unitario, margen_porcentaje, subtotal, total_con_margen) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt_det = $pdo->prepare($sql_det);
@@ -217,7 +218,7 @@ if ($accion === 'guardar') {
     exit;
 }
 
-// --- 3.1. GENERAR ÓRDENES DE COMPRA BAJO DEMANDA ---
+// --- 3.1. GENERAR ÓRDENES DE COMPRA ---
 if ($accion === 'generar_ordenes') {
     $cotizacion_id = intval($_POST['id'] ?? $_GET['id'] ?? 0);
 
