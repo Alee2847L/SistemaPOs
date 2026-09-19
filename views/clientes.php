@@ -1,51 +1,45 @@
 <?php
 // views/clientes.php
-// 1. INICIAR LA SESIÓN PRIMERO QUE TODO
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 2. VALIDAR QUE EXISTA LA SESIÓN DEL USUARIO ANTES DE NADA
 if (!isset($_SESSION['usuario_id'])) {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['success' => false, 'message' => 'No autorizado']);
     exit;
 }
 
-// 3. VALIDAR QUE LA EMPRESA TENGA CONTRATADO EL MÓDULO DE COTIZACIONES
 $modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
 
 if (!in_array('clientes', $modulos_permitidos)) {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false, 
-        'message' => 'Acceso denegado: El módulo de Cotizaciones no está incluido en el plan de su empresa.'
+        'message' => 'Acceso denegado: El módulo de Clientes no está incluido en el plan de su empresa.'
     ]);
-    exit; // Detiene la ejecución por completo
+    exit;
 }
+
 require_once '../config/conexion.php';
 
 if (!isset($_SESSION['usuario_id'])) {
     header('Location: login.php');
     exit;
 }
+
 $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
-// --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
-$nombre_empresa = "INVERSIONES J."; // Valor por defecto
+$nombre_empresa = "INVERSIONES J.";
 try {
-    // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
     $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
             $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
         }
     }
-} catch (Exception $e) {
-    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
-}
-
+} catch (Exception $e) {}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -53,7 +47,6 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Clientes — <?php echo $nombre_empresa; ?></title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -72,7 +65,7 @@ try {
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
 
-    <!-- Barra de Navegación -->
+    <!-- Header -->
     <header class="bg-white border-b border-slate-200 px-4 sm:px-8 py-3.5 flex justify-between items-center sticky top-0 z-40 shadow-xs">
         <div class="flex items-center gap-2">
             <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-sm"><i class="fa-solid fa-users text-sm"></i></div>
@@ -119,7 +112,7 @@ try {
         </div>
     </main>
 
-    <!-- Modal Formulario -->
+    <!-- Modal Formulario Cliente -->
     <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4" id="modalCliente" style="display: none;">
         <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col">
             <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -130,7 +123,6 @@ try {
                 <form id="formCliente" class="space-y-4">
                     <input type="hidden" id="cli_es_edicion" value="0">
                     
-                    <!-- Código BP y Estado (Estado solo se muestra en edición) -->
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block font-semibold text-xs text-slate-600 mb-1">Código BP:</label>
@@ -164,7 +156,6 @@ try {
                         <input type="text" id="cli_nombre" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" required>
                     </div>
 
-                    <!-- Campos de Crédito (Ocultos al crear, visibles al editar) -->
                     <div class="grid grid-cols-2 gap-4" id="contenedor_credito" style="display: none;">
                         <div>
                             <label class="block font-semibold text-xs text-slate-600 mb-1">Límite de Crédito (L.):</label>
@@ -201,7 +192,7 @@ try {
         </div>
     </div>
 
-    <!-- MODAL FLOTANTE DE SEGURIDAD PARA ELIMINACIÓN -->
+    <!-- Modal Eliminar -->
     <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4" id="modalEliminarSeguridadCliente" style="display: none;">
         <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col">
             <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-rose-50">
@@ -227,23 +218,61 @@ try {
         </div>
     </div>
 
+    <!-- MODAL VER CONTRATOS DEL CLIENTE -->
+    <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden" id="modalContratosCliente">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-indigo-600 text-white">
+                <h4 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-file-contract"></i> 
+                    Contratos de: <span id="modal_cli_nombre">Cliente</span>
+                </h4>
+                <button type="button" onclick="cerrarModalContratos()" class="text-white/80 hover:text-white p-1 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-grow space-y-4" id="contenidoContratosCliente">
+                <div class="text-center py-8 text-slate-400">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                    <p>Cargando contratos...</p>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button type="button" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-xl transition text-sm" onclick="cerrarModalContratos()">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const esAdmin = <?php echo $es_admin ? 'true' : 'false'; ?>;
         let listaClientesOriginal = [];
 
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('txtClaveAdminCli').addEventListener('keydown', (e) => { if(e.key === 'Enter') ejecutarEliminacionCliente(); });
+            document.getElementById('txtClaveAdminCli').addEventListener('keydown', (e) => { 
+                if(e.key === 'Enter') ejecutarEliminacionCliente(); 
+            });
             cargarClientes();
         });
 
         function cargarClientes() {
-            fetch('../api/clientes.php?accion=listar').then(res => res.json()).then(res => {
-                if(res.success) { listaClientesOriginal = res.data; renderizarTabla(res.data); }
-            });
+            fetch('../api/clientes.php?accion=listar')
+                .then(res => res.json())
+                .then(res => {
+                    if(res.success) { 
+                        listaClientesOriginal = res.data; 
+                        renderizarTabla(res.data); 
+                    }
+                });
         }
 
         function renderizarTabla(clientes) {
-            let html = clientes.length === 0 ? '<tr><td colspan="8" class="text-center py-6 text-slate-400">No hay clientes registrados</td></tr>' : '';
+            let html = clientes.length === 0 
+                ? '<tr><td colspan="8" class="text-center py-6 text-slate-400">No hay clientes registrados</td></tr>' 
+                : '';
+
             clientes.forEach(c => {
                 const esJuridico = c.tipo_cliente === 'juridico';
                 const esActivo = (c.estado || 'ACT') === 'ACT';
@@ -257,23 +286,49 @@ try {
                     ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">${diasMora} días mora</span>`
                     : '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">Al día</span>';
 
-                html += `<tr class="border-b border-slate-100 hover:bg-slate-50">
+                html += `
+                <tr class="border-b border-slate-100 hover:bg-slate-50">
                     <td class="py-3 px-4 font-semibold">${c.codigo_bp}</td>
                     <td class="py-3 px-4">${badgeEstado}</td>
-                    <td class="py-3 px-4"><span class="px-2 py-1 rounded-full text-[10px] font-bold ${esJuridico ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}">${esJuridico ? 'JURÍDICO' : 'NATURAL'}</span></td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-1 rounded-full text-[10px] font-bold ${esJuridico ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}">
+                            ${esJuridico ? 'JURÍDICO' : 'NATURAL'}
+                        </span>
+                    </td>
                     <td class="py-3 px-4">${c.rtn_dni}</td>
-                    <td class="py-3 px-4">${c.Nombre}</td>
+                    <td class="py-3 px-4">${escapeHtml(c.Nombre)}</td>
                     <td class="py-3 px-4">L. ${Number(c.limite_credito || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     <td class="py-3 px-4">${badgeMora}</td>
                     <td class="py-3 px-4 text-center">
                         <div class="flex justify-center gap-1">
-                            <button type="button" class="bg-emerald-50 text-emerald-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-emerald-100 transition" onclick="irAFacturar('${c.codigo_bp}')">Facturar</button>
-                            ${esAdmin ? `<button type="button" class="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-amber-100 transition" onclick="editarCliente('${c.codigo_bp}')">Editar</button>` : ''}
-                            ${esAdmin && c.codigo_bp !== 'BP000' ? `<button type="button" class="bg-rose-50 text-rose-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-rose-100 transition" onclick="eliminarCliente('${c.codigo_bp}')">Eliminar</button>` : ''}
+                            <!-- Botón Ojo - Ver Contratos -->
+                            <button type="button" 
+                                    class="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-indigo-100 transition" 
+                                    onclick="verContratosCliente('${c.codigo_bp}', '${escapeHtml(c.Nombre)}')"
+                                    title="Ver contratos y estado de pagos">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+
+                            <button type="button" class="bg-emerald-50 text-emerald-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-emerald-100 transition" onclick="irAFacturar('${c.codigo_bp}')">
+                                Facturar
+                            </button>
+                            
+                            ${esAdmin ? `
+                                <button type="button" class="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-amber-100 transition" onclick="editarCliente('${c.codigo_bp}')">
+                                    Editar
+                                </button>
+                            ` : ''}
+                            
+                            ${esAdmin && c.codigo_bp !== 'BP000' ? `
+                                <button type="button" class="bg-rose-50 text-rose-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-rose-100 transition" onclick="eliminarCliente('${c.codigo_bp}')">
+                                    Eliminar
+                                </button>
+                            ` : ''}
                         </div>
                     </td>
                 </tr>`;
             });
+
             document.getElementById('tablaClientes').innerHTML = html;
         }
 
@@ -286,11 +341,8 @@ try {
             document.getElementById('cli_es_edicion').value = '0';
             document.getElementById('formCliente').reset();
             document.getElementById('cli_codigo_bp').value = 'AUTOGENERADO';
-            
-            // Ocultar opciones de crédito y estado al crear nuevo
             document.getElementById('contenedor_estado').style.display = 'none';
             document.getElementById('contenedor_credito').style.display = 'none';
-
             document.getElementById('modalCliente').style.display = 'flex';
         }
 
@@ -300,8 +352,6 @@ try {
 
             document.getElementById('modalTitulo').innerText = 'Editar Cliente';
             document.getElementById('cli_es_edicion').value = '1';
-            
-            // Mostrar opciones de crédito y estado al editar
             document.getElementById('contenedor_estado').style.display = 'block';
             document.getElementById('contenedor_credito').style.display = 'grid';
 
@@ -319,8 +369,13 @@ try {
             document.getElementById('modalCliente').style.display = 'flex';
         }
 
-        function cerrarModal() { document.getElementById('modalCliente').style.display = 'none'; }
-        function cerrarModalEliminar() { document.getElementById('modalEliminarSeguridadCliente').style.display = 'none'; }
+        function cerrarModal() { 
+            document.getElementById('modalCliente').style.display = 'none'; 
+        }
+
+        function cerrarModalEliminar() { 
+            document.getElementById('modalEliminarSeguridadCliente').style.display = 'none'; 
+        }
 
         document.getElementById('formCliente').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -337,7 +392,6 @@ try {
             formData.append('direccion', document.getElementById('cli_direccion').value);
             formData.append('correo', document.getElementById('cli_correo').value);
 
-            // Si es edición manda los valores del formulario, si es nuevo fuerza por defecto INA, limite 0 y dias 0
             if (esEdicion) {
                 formData.append('estado', document.getElementById('cli_estado').value);
                 formData.append('limite_credito', document.getElementById('cli_limite_credito').value);
@@ -376,8 +430,13 @@ try {
             formData.append('clave_admin', document.getElementById('txtClaveAdminCli').value);
 
             const res = await fetch('../api/clientes.php', { method: 'POST', body: formData }).then(r => r.json());
-            if (res.success) { alert(res.message); cerrarModalEliminar(); cargarClientes(); } 
-            else { alert(res.message); }
+            if (res.success) { 
+                alert(res.message); 
+                cerrarModalEliminar(); 
+                cargarClientes(); 
+            } else { 
+                alert(res.message); 
+            }
         }
 
         function filtrarClientes() {
@@ -388,6 +447,152 @@ try {
                 c.Nombre.toLowerCase().includes(texto)
             );
             renderizarTabla(filtrados);
+        }
+
+        // ========== FUNCIONES DE CONTRATOS ==========
+        function verContratosCliente(codigoBp, nombreCliente) {
+            document.getElementById('modal_cli_nombre').innerText = nombreCliente;
+            document.getElementById('modalContratosCliente').classList.remove('hidden');
+            document.getElementById('contenidoContratosCliente').innerHTML = `
+                <div class="text-center py-8 text-slate-400">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                    <p>Cargando contratos...</p>
+                </div>
+            `;
+
+            fetch(`../api/prestamos.php?accion=contratos_por_cliente&codigo_bp=${encodeURIComponent(codigoBp)}`)
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success) {
+                        document.getElementById('contenidoContratosCliente').innerHTML = `
+                            <div class="text-center py-8 text-rose-500">
+                                <i class="fa-solid fa-triangle-exclamation text-2xl mb-2"></i>
+                                <p>${res.message || 'Error al cargar los contratos'}</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    const contratos = res.data || [];
+
+                    if (contratos.length === 0) {
+                        document.getElementById('contenidoContratosCliente').innerHTML = `
+                            <div class="text-center py-10 text-slate-400">
+                                <i class="fa-solid fa-folder-open text-3xl mb-3"></i>
+                                <p class="font-medium">Este cliente no tiene contratos activos</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    let html = '';
+
+                    contratos.forEach(c => {
+                        const cuotas = c.cuotas || [];
+                        const hoy = new Date().toISOString().slice(0, 10);
+
+                        let cuotasPendientes = 0;
+                        let cuotasVencidas = 0;
+                        let montoVencido = 0;
+                        let proximaCuota = null;
+
+                        cuotas.forEach(cuota => {
+                            if (cuota.estado === 'PENDIENTE') {
+                                cuotasPendientes++;
+                                if (cuota.fecha_vencimiento < hoy) {
+                                    cuotasVencidas++;
+                                    montoVencido += parseFloat(cuota.monto_cuota);
+                                } else if (!proximaCuota) {
+                                    proximaCuota = cuota;
+                                }
+                            }
+                        });
+
+                        const estaEnMora = cuotasVencidas > 0;
+                        const estadoBadge = estaEnMora
+                            ? `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">EN MORA (${cuotasVencidas} cuotas)</span>`
+                            : `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">AL DÍA</span>`;
+
+                        const cuotaPromedio = c.cuota_promedio || (c.plazo_meses > 0 ? (c.total_credito / c.plazo_meses) : 0);
+
+                        html += `
+                            <div class="border border-slate-200 rounded-xl overflow-hidden">
+                                <div class="bg-slate-50 px-4 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                    <div>
+                                        <div class="font-bold text-slate-900 text-sm">Contrato #${c.id}</div>
+                                        <div class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.producto_descripcion || 'Sin descripción')}</div>
+                                    </div>
+                                    <div>${estadoBadge}</div>
+                                </div>
+                                
+                                <div class="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                    <div>
+                                        <div class="text-slate-500">Capital Financiado</div>
+                                        <div class="font-semibold text-slate-800">L. ${Number(c.monto_financiar).toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-slate-500">Total con Interés</div>
+                                        <div class="font-semibold text-purple-700">L. ${Number(c.total_credito).toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-slate-500">Valor de Cuota</div>
+                                        <div class="font-semibold text-slate-800">L. ${Number(cuotaPromedio).toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-slate-500">Cuotas Pendientes</div>
+                                        <div class="font-semibold text-slate-800">${cuotasPendientes} de ${c.plazo_meses}</div>
+                                    </div>
+                                </div>
+
+                                ${estaEnMora ? `
+                                    <div class="mx-4 mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                                        <div class="flex justify-between items-center">
+                                            <div>
+                                                <div class="text-rose-700 font-bold text-sm">⚠ Total en Mora</div>
+                                                <div class="text-xs text-rose-600">${cuotasVencidas} cuota(s) vencida(s)</div>
+                                            </div>
+                                            <div class="text-rose-700 font-bold text-lg">
+                                                L. ${montoVencido.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ` : `
+                                    <div class="mx-4 mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
+                                        <i class="fa-solid fa-circle-check mr-1"></i> 
+                                        Cliente al día. 
+                                        ${proximaCuota 
+                                            ? `Próxima cuota: ${proximaCuota.fecha_vencimiento} por L. ${Number(proximaCuota.monto_cuota).toLocaleString('en-US', {minimumFractionDigits: 2})}` 
+                                            : 'No hay más cuotas pendientes.'}
+                                    </div>
+                                `}
+                            </div>
+                        `;
+                    });
+
+                    document.getElementById('contenidoContratosCliente').innerHTML = html;
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('contenidoContratosCliente').innerHTML = `
+                        <div class="text-center py-8 text-rose-500">
+                            <p>Error de conexión al cargar los contratos</p>
+                        </div>
+                    `;
+                });
+        }
+
+        function cerrarModalContratos() {
+            document.getElementById('modalContratosCliente').classList.add('hidden');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
     </script>
 </body>

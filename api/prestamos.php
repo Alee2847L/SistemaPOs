@@ -87,6 +87,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'ver_cuotas') {
     exit;
 }
 
+// 1.6 Contratos de un cliente específico (con sus cuotas)
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'contratos_por_cliente') {
+    $codigo_bp = trim($_GET['codigo_bp'] ?? '');
+    
+    if (empty($codigo_bp)) {
+        echo json_encode(['success' => false, 'message' => 'Código BP requerido']);
+        exit;
+    }
+
+    try {
+        // Solo contratos ACTIVOS
+        $stmt = $pdo->prepare("
+            SELECT * FROM contratos 
+            WHERE codigo_bp = ? AND estado = 'ACTIVO'
+            ORDER BY id DESC
+        ");
+        $stmt->execute([$codigo_bp]);
+        $contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Para cada contrato, traer sus cuotas
+        foreach ($contratos as &$contrato) {
+            $stmtCuotas = $pdo->prepare("
+                SELECT * FROM cuotas_contrato 
+                WHERE contrato_id = ? 
+                ORDER BY numero_cuota ASC
+            ");
+            $stmtCuotas->execute([$contrato['id']]);
+            $contrato['cuotas'] = $stmtCuotas->fetchAll(PDO::FETCH_ASSOC);
+
+            // Calcular cuota promedio
+            if (count($contrato['cuotas']) > 0) {
+                $contrato['cuota_promedio'] = $contrato['cuotas'][0]['monto_cuota'];
+            } else {
+                $contrato['cuota_promedio'] = $contrato['plazo_meses'] > 0 
+                    ? ($contrato['total_credito'] / $contrato['plazo_meses']) 
+                    : 0;
+            }
+        }
+
+        echo json_encode(['success' => true, 'data' => $contratos]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // 2. Guardar nuevo contrato (préstamo)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
