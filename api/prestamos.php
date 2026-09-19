@@ -7,7 +7,7 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     require_once __DIR__ . '/../config/conexion.php';
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Error de conexión a la BD: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Error de conexión: ' . $e->getMessage()]);
     exit;
 }
 
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'listar') {
         $prestamos = $stmt->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['success' => true, 'data' => $prestamos]);
     } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error al consultar contratos: ' . $e->getMessage()]);
     }
     exit;
 }
@@ -44,12 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode($raw, true);
 
     if (!$data || empty($data['codigo_bp']) || empty($data['monto_financiar'])) {
-        echo json_encode(['success' => false, 'message' => 'Faltan datos requeridos para procesar el préstamo.']);
+        echo json_encode(['success' => false, 'message' => 'Faltan datos requeridos.']);
         exit;
     }
 
     $codigo_bp = trim($data['codigo_bp']);
-    $producto_descripcion = trim($data['producto_descripcion'] ?? 'Préstamo personal / Financiamiento');
+    $producto_descripcion = trim($data['producto_descripcion'] ?? 'Préstamo personal');
     $total_factura = floatval($data['total_factura'] ?? 0);
     $prima = floatval($data['prima'] ?? 0);
     $monto_financiar = floatval($data['monto_financiar'] ?? 0);
@@ -62,7 +62,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
-        // 1. Insertar contrato (adaptado a los campos de tu tabla contratos)
         $sqlContrato = "INSERT INTO contratos (
                             codigo_bp, producto_descripcion, total_factura, prima, 
                             monto_financiar, porcentaje_interes, total_credito, 
@@ -86,7 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $contrato_id = $pdo->lastInsertId();
 
-        // 2. Generar cuotas calculando las fechas exactas según la frecuencia
         $monto_cuota = $numero_cuotas > 0 ? ($total_credito / $numero_cuotas) : $total_credito;
         
         $sqlCuota = "INSERT INTO cuotas_contrato (
@@ -115,7 +113,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         }
 
-        // 3. Descontar del límite de crédito del cliente
         $sqlRestarLimite = "UPDATE clientes SET limite_credito = GREATEST(0, limite_credito - ?) WHERE codigo_bp = ?";
         $stmtRestar = $pdo->prepare($sqlRestarLimite);
         $stmtRestar->execute([$monto_financiar, $codigo_bp]);
@@ -125,14 +122,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode([
             'success' => true,
             'contrato_id' => $contrato_id,
-            'message' => 'Préstamo y cuotas generados con éxito.'
+            'message' => 'Préstamo generado correctamente.'
         ]);
 
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        echo json_encode(['success' => false, 'message' => 'Error en BD: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error en la base de datos: ' . $e->getMessage()]);
     }
     exit;
 }
