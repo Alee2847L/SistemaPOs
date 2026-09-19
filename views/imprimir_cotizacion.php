@@ -25,11 +25,11 @@ if (!$venta) {
 }
 
 // Obtener detalles
-$stmtDet = $pdo->prepare("
-    SELECT d.*, p.nombre, p.codigo 
-    FROM detalle_ventas d 
-    LEFT JOIN productos p ON d.producto_id = p.id 
-    WHERE d.venta_id = ?
+$$stmtDet = $pdo->prepare("
+SELECT d.*, p.nombre, p.codigo_barra
+FROM detalle_ventas d 
+LEFT JOIN productos p ON d.producto_id = p.id 
+WHERE d.venta_id = ?
 ");
 $stmtDet->execute([$id]);
 $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
