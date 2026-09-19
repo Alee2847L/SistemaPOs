@@ -21,6 +21,9 @@ if (!isset($_SESSION['usuario_id'])) {
 
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
+// Obtener módulos activos de la sesión (por defecto un arreglo vacío si no existe)
+$modulos_activos = $_SESSION['modulos_activos'] ?? [];
+
 // --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
 $nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
 try {
@@ -119,7 +122,8 @@ try {
                 <!-- Listado de tarjetas -->
                 <div id="panel-lateral-modulos" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 transition-all duration-300 h-full">
 
-                    <!-- Módulos comunes para Administrador y Vendedor -->
+                    <!-- PUNTO DE VENTA -->
+                    <?php if (in_array('pos', $modulos_activos)): ?>
                     <div onclick="abrirModulo('pos', 'Punto de Venta', 'views/pos.php', '🛒')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Punto de Venta">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-emerald-600 group-hover:text-white">🛒</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -127,8 +131,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Realizar nuevas ventas.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
-                    <!-- MÓDULO DE COTIZACIONES Y ÓRDENES -->
+                    <!-- COTIZACIONES Y ÓRDENES -->
+                    <?php if (in_array('cotizaciones', $modulos_activos)): ?>
                     <div onclick="abrirModulo('cotizaciones', 'Cotizaciones y Órdenes', 'views/cotizaciones.php', '📝')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Cotizaciones y Órdenes">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-blue-600 group-hover:text-white">📝</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -136,7 +142,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Proyectos y compras a proveedores.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
+                    <!-- PRODUCTOS -->
+                    <?php if (in_array('productos', $modulos_activos)): ?>
                     <div onclick="abrirModulo('productos', 'Productos', 'views/productos.php', '📦')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Productos">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-amber-600 group-hover:text-white">📦</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -144,7 +153,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Inventario y precios.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
+                    <!-- CLIENTES -->
+                    <?php if (in_array('clientes', $modulos_activos)): ?>
                     <div onclick="abrirModulo('clientes', 'Clientes', 'views/clientes.php', '👥')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Clientes">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-indigo-600 group-hover:text-white">👥</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -152,8 +164,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Gestionar clientes y créditos.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
-                    <!-- NUEVO MÓDULO DE PRÉSTAMOS Y CRÉDITOS -->
+                    <!-- PRÉSTAMOS Y CRÉDITOS -->
+                    <?php if (in_array('prestamos', $modulos_activos)): ?>
                     <div onclick="abrirModulo('prestamos', 'Préstamos y Créditos', 'views/prestamos.php', '💳')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-purple-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Préstamos y Créditos">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-purple-600 group-hover:text-white">💳</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -161,7 +175,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Control de contratos y cuotas.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
+                    <!-- TRANSACCIONES -->
+                    <?php if (in_array('transacciones', $modulos_activos)): ?>
                     <div onclick="abrirModulo('transacciones', 'Transacciones', 'views/transacciones.php', '📊')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Transacciones">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-blue-600 group-hover:text-white">📊</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -169,8 +186,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Historial de ventas.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
-                    <!-- Módulo de Recaudo (Visible para Administrador y Vendedor) -->
+                    <!-- RECAUDO -->
+                    <?php if (in_array('recaudo', $modulos_activos)): ?>
                     <div onclick="abrirModulo('recaudo', 'Recaudo', 'views/recaudo.php', '💵')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Recaudo">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-teal-600 group-hover:text-white">💵</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -178,8 +197,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Cobros y abonos.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
-                    <!-- Historial y Control de Recaudos (Visible para Administrador y Vendedor) -->
+                    <!-- HISTORIAL DE RECAUDOS -->
+                    <?php if (in_array('historial', $modulos_activos)): ?>
                     <div onclick="abrirModulo('historial_recaudos', 'Historial de Recaudos', 'views/historial_recaudos.php', '📜')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Historial de Recaudos">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-violet-600 group-hover:text-white">📜</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -187,9 +208,10 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Reimpresión y reversiones.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
-                    <!-- Módulos Exclusivos para Administradores -->
-                    <?php if ($es_admin): ?>
+                    <!-- Módulos Exclusivos para Administradores (Validan tanto ser admin como tener el módulo activo) -->
+                    <?php if ($es_admin && in_array('auditoria', $modulos_activos)): ?>
                     <div onclick="abrirModulo('auditoria_inventario', 'Auditoría Inventario', 'views/auditoria_inventario.php', '📋')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Auditoría Inventario">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-cyan-600 group-hover:text-white">📋</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -197,7 +219,9 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Historial de entradas.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
+                    <?php if ($es_admin && in_array('arqueo', $modulos_activos)): ?>
                     <div onclick="abrirModulo('arqueo', 'Arqueo de Caja', 'views/arqueo.php', '💰')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Arqueo de Caja">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-yellow-50 text-yellow-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-yellow-600 group-hover:text-white">💰</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -205,15 +229,19 @@ try {
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Control de efectivo.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
-                    <div onclick="abrirModulo('devoluciones', 'Devoluciones', 'views/devoluciones.php', '🔄')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-rose-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Devoluciones">
+                    <?php if ($es_admin && in_array('devoluciones', $modulos_activos)): ?>
+                    <div onclick="abrirModulo('devoluciones', 'Devoluciones', 'views/devoluciones.php', '🔄')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-rose-200/60 shadow-xs hover:shadow-md hover:border-rose-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Devoluciones">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-rose-600 group-hover:text-white">🔄</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
                             <h3 class="font-bold text-slate-900 group-hover:text-rose-600 transition text-sm sm:text-base truncate">Devoluciones</h3>
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Reembolsos e inventario.</p>
                         </div>
                     </div>
+                    <?php endif; ?>
 
+                    <?php if ($es_admin && in_array('usuarios', $modulos_activos)): ?>
                     <div onclick="abrirModulo('usuarios', 'Usuarios', 'views/usuarios.php', '⚙️')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-rose-200/60 shadow-xs hover:shadow-md hover:border-rose-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Usuarios">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-rose-600 group-hover:text-white">⚙️</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
