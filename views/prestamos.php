@@ -12,17 +12,18 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-// 3. VALIDAR QUE LA EMPRESA TENGA CONTRATADO EL MÓDULO DE COTIZACIONES
+// 3. VALIDAR QUE LA EMPRESA TENGA CONTRATADO EL MÓDULO
 $modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
 
 if (!in_array('prestamos', $modulos_permitidos)) {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false, 
-        'message' => 'Acceso denegado: El módulo de Cotizaciones no está incluido en el plan de su empresa.'
+        'message' => 'Acceso denegado: El módulo de Préstamos no está incluido en el plan de su empresa.'
     ]);
-    exit; // Detiene la ejecución por completo
+    exit;
 }
+
 require_once __DIR__ . '/../config/conexion.php';
 
 if (!isset($_SESSION['usuario_id'])) {
@@ -30,13 +31,13 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-$rolActual =$_SESSION['usuario_rol'] ?? 'vendedor';
+$rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
 $nombre_empresa = "INVERSIONES J.";
 try {
-    $stmt_config =$pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
-    if ($row_config =$stmt_config->fetch(PDO::FETCH_ASSOC)) {
+    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
             $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
         }
@@ -76,16 +77,51 @@ try {
 
     <main class="max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 flex-grow flex flex-col">
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 flex-grow flex flex-col">
-            <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-6">
+            
+            <!-- BARRA DE BÚSQUEDA + FILTROS DE FECHA -->
+            <div class="flex flex-col lg:flex-row justify-between items-stretch lg:items-end gap-4 mb-6">
+                
+                <!-- Buscador de texto -->
                 <div class="relative flex-1 max-w-md">
-                    <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400"><i class="fa-solid fa-magnifying-glass text-xs"></i></span>
-                    <input type="text" id="inputBuscarPrestamo" placeholder="Buscar por cliente, DNI o descripción..." onkeyup="filtrarPrestamos()" class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-600/20 focus:border-purple-600 transition">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                    </span>
+                    <input type="text" id="inputBuscarPrestamo" 
+                           placeholder="Buscar por cliente, DNI o descripción..." 
+                           onkeyup="filtrarPrestamos()" 
+                           class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-600/20 focus:border-purple-600 transition">
                 </div>
-                <button onclick="abrirModalNuevoPrestamo()" class="bg-purple-600 hover:bg-purple-700 text-white font-medium text-sm px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs">
+
+                <!-- Filtros de fecha -->
+                <div class="flex flex-wrap items-end gap-2">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500 mb-1">Desde:</label>
+                        <input type="date" id="filtroFechaInicio" 
+                               class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hasta:</label>
+                        <input type="date" id="filtroFechaFin" 
+                               class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 transition">
+                    </div>
+                    <button onclick="cargarPrestamos()" 
+                            class="bg-purple-600 hover:bg-purple-700 text-white font-medium text-sm px-4 py-2 rounded-xl transition flex items-center gap-1.5 h-[42px]">
+                        <i class="fa-solid fa-filter text-xs"></i> Filtrar
+                    </button>
+                    <button onclick="limpiarFiltros()" 
+                            class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-3 py-2 rounded-xl transition h-[42px]">
+                        Limpiar
+                    </button>
+                </div>
+
+                <!-- Botón Nuevo Préstamo -->
+                <button onclick="abrirModalNuevoPrestamo()" 
+                        class="bg-purple-600 hover:bg-purple-700 text-white font-medium text-sm px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs">
                     <i class="fa-solid fa-plus-circle"></i> Nuevo Préstamo / Crédito
                 </button>
             </div>
 
+            <!-- TABLA -->
             <div class="overflow-x-auto rounded-xl border border-slate-200 flex-grow">
                 <table class="w-full text-left border-collapse">
                     <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[11px] font-semibold">
@@ -216,7 +252,6 @@ try {
             </div>
             
             <div class="p-6 overflow-y-auto space-y-4 text-sm flex-grow" id="areaImpresionPlan">
-                <!-- Info del Cliente y Préstamo -->
                 <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                     <div>
                         <span class="text-slate-500 block">Cliente:</span>
@@ -235,7 +270,6 @@ try {
                     </div>
                 </div>
 
-                <!-- Tabla de Cuotas -->
                 <div class="overflow-x-auto rounded-xl border border-slate-200">
                     <table class="w-full text-left border-collapse">
                         <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[11px] font-semibold">
@@ -272,15 +306,34 @@ try {
         });
 
         function cargarPrestamos() {
-            fetch('../api/prestamos.php?accion=listar')
+            const fechaInicio = document.getElementById('filtroFechaInicio')?.value || '';
+            const fechaFin = document.getElementById('filtroFechaFin')?.value || '';
+
+            let url = '../api/prestamos.php?accion=listar';
+            if (fechaInicio) url += `&fecha_inicio=${fechaInicio}`;
+            if (fechaFin) url += `&fecha_fin=${fechaFin}`;
+
+            fetch(url)
                 .then(res => res.json())
                 .then(res => {
                     if (res.success) {
                         listaPrestamosOriginal = res.data;
                         renderizarTablaPrestamos(res.data);
+                    } else {
+                        alert('Error al cargar préstamos: ' + (res.message || 'Error desconocido'));
                     }
                 })
-                .catch(err => console.error("Error al cargar préstamos:", err));
+                .catch(err => {
+                    console.error("Error al cargar préstamos:", err);
+                    alert('Error de conexión al cargar los préstamos');
+                });
+        }
+
+        function limpiarFiltros() {
+            document.getElementById('filtroFechaInicio').value = '';
+            document.getElementById('filtroFechaFin').value = '';
+            document.getElementById('inputBuscarPrestamo').value = '';
+            cargarPrestamos();
         }
 
         function renderizarTablaPrestamos(prestamos) {
@@ -548,8 +601,8 @@ try {
             let texto = document.getElementById('inputBuscarPrestamo').value.toLowerCase();
             let filtrados = listaPrestamosOriginal.filter(p => 
                 (p.cliente_nombre && p.cliente_nombre.toLowerCase().includes(texto)) || 
-                p.codigo_bp.toLowerCase().includes(texto) || 
-                p.producto_descripcion.toLowerCase().includes(texto)
+                (p.codigo_bp && p.codigo_bp.toLowerCase().includes(texto)) || 
+                (p.producto_descripcion && p.producto_descripcion.toLowerCase().includes(texto))
             );
             renderizarTablaPrestamos(filtrados);
         }

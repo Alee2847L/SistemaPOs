@@ -13,16 +13,36 @@ if (!isset($_SESSION['usuario_id'])) {
 
 $accion = $_GET['accion'] ?? '';
 
-// 1. Listar contratos existentes haciendo JOIN con clientes
+// 1. Listar contratos con filtro de fechas
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'listar') {
     try {
-        $stmt = $pdo->query("
+        $fechaInicio = $_GET['fecha_inicio'] ?? '';
+        $fechaFin    = $_GET['fecha_fin'] ?? '';
+
+        $sql = "
             SELECT c.*, cl.Nombre as cliente_nombre 
             FROM contratos c
             LEFT JOIN clientes cl ON c.codigo_bp = cl.codigo_bp
-            ORDER BY c.id DESC
-        ");
+            WHERE 1=1
+        ";
+        $params = [];
+
+        if (!empty($fechaInicio)) {
+            $sql .= " AND DATE(c.fecha_inicio) >= ?";
+            $params[] = $fechaInicio;
+        }
+
+        if (!empty($fechaFin)) {
+            $sql .= " AND DATE(c.fecha_inicio) <= ?";
+            $params[] = $fechaFin;
+        }
+
+        $sql .= " ORDER BY c.id DESC";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
         $contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
         echo json_encode(['success' => true, 'data' => $contratos]);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -30,11 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'listar') {
     exit;
 }
 
-// 1.5 Listar cuotas de un contrato específico para el plan de pagos
+// 1.5 Listar cuotas de un contrato específico
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'ver_cuotas') {
     $contrato_id = intval($_GET['contrato_id'] ?? 0);
     try {
-        // Obtener datos generales del contrato y cliente (Corregido cl.rtn_dni en lugar de cl.dni)
         $stmt_c = $pdo->prepare("
             SELECT c.*, cl.Nombre as cliente_nombre, cl.rtn_dni as cliente_dni, cl.Telefono as cliente_telefono
             FROM contratos c
@@ -49,7 +68,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'ver_cuotas') {
             exit;
         }
 
-        // Obtener las cuotas
         $stmt_cuotas = $pdo->prepare("
             SELECT * FROM cuotas_contrato 
             WHERE contrato_id = ? 
@@ -69,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'ver_cuotas') {
     exit;
 }
 
-// 2. Guardar nuevo contrato (préstamo) y sus cuotas automáticamente
+// 2. Guardar nuevo contrato (préstamo)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     
@@ -91,7 +109,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
-        // Insertar en contratos especificando tipo_contrato = 'prestamo'
         $stmt = $pdo->prepare("
             INSERT INTO contratos (codigo_bp, producto_descripcion, total_factura, prima, monto_financiar, porcentaje_interes, total_credito, plazo_meses, fecha_inicio, estado, tipo_contrato)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVO', 'prestamo')
@@ -109,7 +126,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $contrato_id = $pdo->lastInsertId();
 
-        // Generar las cuotas automáticamente en cuotas_contrato
         $monto_cuota = $numero_cuotas > 0 ? ($total_credito / $numero_cuotas) : $total_credito;
         
         $stmtCuota = $pdo->prepare("
@@ -123,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else if ($frecuencia === 'quincenal') {
                 $dias = $i * 15;
                 $fechaVencimiento = date('Y-m-d', strtotime("+$dias days"));
-            } else { // semanal
+            } else {
                 $dias = $i * 7;
                 $fechaVencimiento = date('Y-m-d', strtotime("+$dias days"));
             }
