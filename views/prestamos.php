@@ -577,6 +577,7 @@ try {
                         const cuotas = res.cuotas;
 
                         document.getElementById('plan_cli_nombre').innerText = c.cliente_nombre || 'Cliente General';
+                        window.planClienteDni = c.cliente_dni || '';
                         document.getElementById('plan_cli_bp').innerText = c.codigo_bp;
                         document.getElementById('plan_concepto').innerText = c.producto_descripcion;
                         document.getElementById('plan_contrato_id').innerText = c.id;
@@ -625,12 +626,39 @@ try {
 
         function imprimirPlanPagos() {
             const contenido = document.getElementById('areaImpresionPlan').innerHTML;
-            const ventana = window.open('', '', 'height=600,width=800');
+            const nombreEmpresa = <?php echo json_encode($nombre_empresa, JSON_HEX_TAG); ?>; // ya viene escapado para HTML
+            const nombreCliente = escapeHtml(document.getElementById('plan_cli_nombre').innerText || '');
+            const dniCliente    = escapeHtml(window.planClienteDni || '');
+
+            const firmas = `
+                <div style="margin-top:70px; page-break-inside:avoid; break-inside:avoid; font-family:Arial, sans-serif;">
+                    <div style="display:flex; justify-content:space-between; gap:50px;">
+                        <div style="flex:1; text-align:center; font-size:12px;">
+                            <div style="border-top:1px solid #000; padding-top:6px;">
+                                <strong>Cliente (Deudor)</strong><br>
+                                ${nombreCliente}<br>
+                                ${dniCliente ? 'RTN/DNI: ' + dniCliente : ''}
+                            </div>
+                            <div style="margin-top:16px;">Fecha: ____ / ____ / ________</div>
+                        </div>
+                        <div style="flex:1; text-align:center; font-size:12px;">
+                            <div style="border-top:1px solid #000; padding-top:6px;">
+                                <strong>Por la empresa (Acreedor)</strong><br>
+                                ${nombreEmpresa}<br>
+                                Nombre: ______________________
+                            </div>
+                            <div style="margin-top:16px;">Fecha: ____ / ____ / ________</div>
+                        </div>
+                    </div>
+                </div>`;
+
+            const ventana = window.open('', '', 'height=700,width=800');
             ventana.document.write('<html><head><title>Plan de Pagos</title>');
             ventana.document.write('<script src="https://cdn.tailwindcss.com"><\/script>');
             ventana.document.write('</head><body class="p-8 bg-white">');
-            ventana.document.write('<h2 class="text-xl font-bold mb-4 text-purple-700">Plan de Pagos y Cuotas - INVERSIONES J.</h2>');
+            ventana.document.write('<h2 class="text-xl font-bold mb-4 text-purple-700">Plan de Pagos y Cuotas - ' + nombreEmpresa + '</h2>');
             ventana.document.write(contenido);
+            ventana.document.write(firmas);
             ventana.document.write('</body></html>');
             ventana.document.close();
             setTimeout(() => {
