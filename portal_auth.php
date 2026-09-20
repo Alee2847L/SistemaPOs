@@ -1,0 +1,146 @@
+<?php
+// api/portal_auth.php  — Login de CLIENTES por código (OTP) al correo
+session_start();
+header('Content-Type: application/json; charset=utf-8');
+require_once __DIR__ . '/../config/conexion.php';
+
+const OTP_MINUTOS            = 10;  // vigencia del código
+const OTP_MAX_INTENTOS       = 5;   // intentos de verificación por código
+const OTP_MAX_POR_CLIENTE_H  = 5;   // códigos por cliente por hora
+const OTP_MAX_POR_IP_H       = 15;  // códigos por IP por hora
+
+function responder(bool $ok, string $msg, array $extra = []): void {
+    echo json_encode(array_merge(['success' => $ok, 'message' => $msg], $extra));
+    exit;
+}
+
+function hashCodigo(string $codigo, string $bp): string {
+    return hash('sha256', $codigo . '|' . $bp);
+}
+
+/**
+ * Reemplaza esto por el mismo mecanismo que ya usas en
+ * 'solicitar_recuperacion' de api/auth.php (PHPMailer, etc.).
+ */
+function enviarCodigoPorCorreo(string $email, string $nombre, string $codigo): bool {
+    $asunto  = 'Tu código de acceso';
+    $mensaje = "Hola $nombre,\n\nTu código de acceso es: $codigo\n"
+             . "Vence en " . OTP_MINUTOS . " minutos. Si no lo solicitaste, ignora este mensaje.";
+    return mail($email, $asunto, $mensaje, "Content-Type: text/plain; charset=UTF-8");
+}
+
+function buscarCliente(PDO $pdo, string $identificador): ?array {
+    // AJUSTA nombres de tabla/columnas a tu esquema (dni, email, nombre, codigo_bp)
+    $stmt = $pdo->prepare(
+        "SELECT codigo_bp, nombre, email
+           FROM clientes
+          WHERE (dni = ? OR email = ?)
+            AND email IS NOT NULL AND email <> ''
+          LIMIT 1"
+    );
+    $stmt->execute([$identificador, $identificador]);
+    $c = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $c ?: null;
+}
+
+$accion = $_POST['accion'] ?? '';
+$ip     = $_SERVER['REMOTE_ADDR'] ?? '';
+
+// ---------------------------------------------------------------
+// 1) SOLICITAR CÓDIGO
+// ---------------------------------------------------------------
+if ($accion === 'solicitar_codigo') {
+    $identificador = trim($_POST['identificador'] ?? '');
+    if ($identificador === '') responder(false, 'Ingresa tu número de identidad o correo.');
+
+    // Mensaje idéntico exista o no el cliente (evita enumerar clientes)
+    $generico = 'Si los datos son correctos, enviamos un código al correo registrado.';
+
+    $cliente = buscarCliente($pdo, $identificador);
+    if (!$cliente) responder(true, $generico);
+
+    // Límites de frecuencia
+    $q = $pdo->prepare("SELECT COUNT(*) FROM cliente_otp WHERE codigo_bp = ? AND creado_en > (NOW() - INTERVAL 1 HOUR)");
+    $q->execute([$cliente['codigo_bp']]);
+    $porCliente = (int)$q->fetchColumn();
+
+    $q = $pdo->prepare("SELECT COUNT(*) FROM cliente_otp WHERE ip = ? AND creado_en > (NOW() - INTERVAL 1 HOUR)");
+    $q->execute([$ip]);
+    $porIp = (int)$q->fetchColumn();
+
+    if ($porCliente >= OTP_MAX_POR_CLIENTE_H || $porIp >= OTP_MAX_POR_IP_H) {
+        responder(false, 'Demasiadas solicitudes. Intenta de nuevo más tarde.');
+    }
+
+    // Invalida códigos anteriores y crea uno nuevo
+    $pdo->prepare("UPDATE cliente_otp SET usado = 1 WHERE codigo_bp = ? AND usado = 0")
+        ->execute([$cliente['codigo_bp']]);
+
+    $codigo = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+    $pdo->prepare(
+        "INSERT INTO cliente_otp (codigo_bp, codigo_hash, expira_en, ip)
+         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL " . OTP_MINUTOS . " MINUTE), ?)"
+    )->execute([$cliente['codigo_bp'], hashCodigo($codigo, $cliente['codigo_bp']), $ip]);
+
+    enviarCodigoPorCorreo($cliente['email'], $cliente['nombre'] ?? 'cliente', $codigo);
+
+    responder(true, $generico);
+}
+
+// ---------------------------------------------------------------
+// 2) VERIFICAR CÓDIGO
+// ---------------------------------------------------------------
+if ($accion === 'verificar_codigo') {
+    $identificador = trim($_POST['identificador'] ?? '');
+    $codigo        = trim($_POST['codigo'] ?? '');
+    $error         = 'Código inválido o vencido.';
+
+    if ($identificador === '' || !preg_match('/^\d{6}$/', $codigo)) responder(false, $error);
+
+    $cliente = buscarCliente($pdo, $identificador);
+    if (!$cliente) responder(false, $error);
+
+    $stmt = $pdo->prepare(
+        "SELECT id, codigo_hash, intentos
+           FROM cliente_otp
+          WHERE codigo_bp = ? AND usado = 0 AND expira_en > NOW()
+          ORDER BY id DESC LIMIT 1"
+    );
+    $stmt->execute([$cliente['codigo_bp']]);
+    $otp = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$otp) responder(false, $error);
+
+    if ((int)$otp['intentos'] >= OTP_MAX_INTENTOS) {
+        $pdo->prepare("UPDATE cliente_otp SET usado = 1 WHERE id = ?")->execute([$otp['id']]);
+        responder(false, 'Demasiados intentos. Solicita un nuevo código.');
+    }
+
+    $pdo->prepare("UPDATE cliente_otp SET intentos = intentos + 1 WHERE id = ?")->execute([$otp['id']]);
+
+    if (!hash_equals($otp['codigo_hash'], hashCodigo($codigo, $cliente['codigo_bp']))) {
+        responder(false, $error);
+    }
+
+    // Código correcto: se consume (un solo uso)
+    $pdo->prepare("UPDATE cliente_otp SET usado = 1 WHERE id = ?")->execute([$otp['id']]);
+
+    session_regenerate_id(true);
+    // Claves DISTINTAS a las del personal: 'usuario_id' NO se toca,
+    // así un cliente jamás pasa las validaciones del sistema interno.
+    $_SESSION['cliente_id']     = $cliente['codigo_bp'];
+    $_SESSION['cliente_nombre'] = $cliente['nombre'] ?? '';
+    $_SESSION['cliente_ultima_actividad'] = time();
+
+    responder(true, 'Acceso concedido.');
+}
+
+// ---------------------------------------------------------------
+// 3) CERRAR SESIÓN DEL CLIENTE
+// ---------------------------------------------------------------
+if ($accion === 'logout') {
+    unset($_SESSION['cliente_id'], $_SESSION['cliente_nombre'], $_SESSION['cliente_ultima_actividad']);
+    responder(true, 'Sesión cerrada.');
+}
+
+responder(false, 'Acción no válida.');

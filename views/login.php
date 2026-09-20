@@ -127,6 +127,23 @@ if (isset($_SESSION['usuario_id'])) {
         .forgot-link a:hover {
             text-decoration: underline;
         }
+        /* Enlace de acceso para clientes */
+        .client-access {
+            text-align: center;
+            margin-top: 22px;
+            padding-top: 18px;
+            border-top: 1px solid #e5e9ed;
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+        .client-access a {
+            display: inline-block;
+            margin-top: 6px;
+            color: #3498db;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .client-access a:hover { text-decoration: underline; }
         /* Estilos para el Modal de Recuperación */
         .modal {
             display: none;
@@ -188,6 +205,11 @@ if (isset($_SESSION['usuario_id'])) {
 
             <button type="submit" class="btn-login">Ingresar</button>
         </form>
+
+        <div class="client-access">
+            ¿Eres cliente y quieres consultar tus cuotas y contratos?<br>
+            <a href="portal.php"><i class="fa-solid fa-user"></i> Soy cliente</a>
+        </div>
     </div>
 
     <!-- Modal para Recuperación de Contraseña -->
