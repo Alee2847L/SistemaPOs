@@ -2,6 +2,16 @@
 // api/portal.php — Datos del cliente autenticado (SOLO lectura)
 session_start();
 header('Content-Type: application/json; charset=utf-8');
+
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+set_exception_handler(function (Throwable $e) {
+    error_log('[portal] ' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Error interno del servidor.']);
+    exit;
+});
+
 require_once __DIR__ . '/../config/conexion.php';
 
 const SESION_MAX_INACTIVIDAD = 1800; // 30 min

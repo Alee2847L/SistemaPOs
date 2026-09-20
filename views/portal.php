@@ -65,7 +65,13 @@ async function post(datos) {
     const fd = new FormData();
     Object.entries(datos).forEach(([k, v]) => fd.append(k, v));
     const r = await fetch('../api/portal_auth.php', { method: 'POST', body: fd });
-    return r.json();
+    const texto = await r.text();
+    try {
+        return JSON.parse(texto);
+    } catch (e) {
+        console.error('Respuesta no válida de portal_auth.php (HTTP ' + r.status + '):', texto);
+        throw e;
+    }
 }
 
 document.getElementById('formPaso1').addEventListener('submit', async e => {

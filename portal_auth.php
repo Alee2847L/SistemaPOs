@@ -2,6 +2,17 @@
 // api/portal_auth.php  — Login de CLIENTES por código (OTP) al correo
 session_start();
 header('Content-Type: application/json; charset=utf-8');
+
+// Nunca imprimir errores de PHP en la respuesta (rompen el JSON); se registran en el log.
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+set_exception_handler(function (Throwable $e) {
+    error_log('[portal_auth] ' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Error interno del servidor.']);
+    exit;
+});
+
 require_once __DIR__ . '/../config/conexion.php';
 
 const OTP_MINUTOS            = 10;  // vigencia del código
@@ -26,21 +37,28 @@ function enviarCodigoPorCorreo(string $email, string $nombre, string $codigo): b
     $asunto  = 'Tu código de acceso';
     $mensaje = "Hola $nombre,\n\nTu código de acceso es: $codigo\n"
              . "Vence en " . OTP_MINUTOS . " minutos. Si no lo solicitaste, ignora este mensaje.";
-    return mail($email, $asunto, $mensaje, "Content-Type: text/plain; charset=UTF-8");
+    $ok = @mail($email, $asunto, $mensaje, "Content-Type: text/plain; charset=UTF-8");
+    if (!$ok) {
+        error_log('[portal_auth] No se pudo enviar el correo a ' . $email . ' (revisa la configuración de correo del servidor).');
+    }
+    return $ok;
 }
 
 function buscarCliente(PDO $pdo, string $identificador): ?array {
-    // AJUSTA nombres de tabla/columnas a tu esquema (dni, email, nombre, codigo_bp)
+    // Acepta DNI/RTN (con o sin guiones/espacios) o correo. Solo clientes activos con correo.
+    $limpio = str_replace(['-', ' '], '', $identificador);
     $stmt = $pdo->prepare(
-        "SELECT codigo_bp, nombre, email
+        "SELECT codigo_bp, Nombre AS nombre, Correo AS email
            FROM clientes
-          WHERE (dni = ? OR email = ?)
-            AND email IS NOT NULL AND email <> ''
-          LIMIT 1"
+          WHERE estado = 'ACT'
+            AND Correo IS NOT NULL AND Correo <> ''
+            AND (rtn_dni = ? OR REPLACE(REPLACE(rtn_dni, '-', ''), ' ', '') = ? OR Correo = ?)
+          LIMIT 2"
     );
-    $stmt->execute([$identificador, $identificador]);
-    $c = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $c ?: null;
+    $stmt->execute([$identificador, $limpio, $identificador]);
+    $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Si el dato coincide con más de un cliente (p. ej. correo compartido) no es seguro adivinar: se rechaza.
+    return count($filas) === 1 ? $filas[0] : null;
 }
 
 $accion = $_POST['accion'] ?? '';
