@@ -48,7 +48,7 @@ function buscarCliente(PDO $pdo, string $identificador): ?array {
     // Acepta DNI/RTN (con o sin guiones/espacios) o correo. Solo clientes activos con correo.
     $limpio = str_replace(['-', ' '], '', $identificador);
     $stmt = $pdo->prepare(
-        "SELECT codigo_bp, Nombre AS nombre, Correo AS Correo
+        "SELECT codigo_bp, Nombre AS nombre, Correo AS email
            FROM clientes
           WHERE estado = 'ACT'
             AND Correo IS NOT NULL AND Correo <> ''
@@ -101,7 +101,7 @@ if ($accion === 'solicitar_codigo') {
          VALUES (?, ?, DATE_ADD(NOW(), INTERVAL " . OTP_MINUTOS . " MINUTE), ?)"
     )->execute([$cliente['codigo_bp'], hashCodigo($codigo, $cliente['codigo_bp']), $ip]);
 
-    enviarCodigoPorCorreo($cliente['Correo'], $cliente['nombre'] ?? 'cliente', $codigo);
+    enviarCodigoPorCorreo($cliente['email'], $cliente['nombre'] ?? 'cliente', $codigo);
 
     responder(true, $generico);
 }
