@@ -28,14 +28,31 @@ if (time() - ($_SESSION['cliente_ultima_actividad'] ?? 0) > SESION_MAX_INACTIVID
 }
 $_SESSION['cliente_ultima_actividad'] = time();
 
-$codigoBp   = $_SESSION['cliente_id'];   // siempre de la sesión, nunca de la URL
-$recaudo_id = (int)($_GET['id'] ?? 0);
-if ($recaudo_id <= 0) {
+$codigoBp = $_SESSION['cliente_id'];   // siempre de la sesión, nunca de la URL
+$cuota_id = (int)($_GET['cuota'] ?? 0);
+if ($cuota_id <= 0) {
     terminar('Recibo no encontrado.', 404);
 }
 
 try {
-    // 1. Cabecera: el recibo solo se devuelve si su contrato pertenece a este cliente
+    // 1. La cuota elegida debe ser de un contrato del cliente, estar pagada y tener recibo
+    $stmtCuota = $pdo->prepare("
+        SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.monto_pagado, cu.fecha_vencimiento, cu.recaudo_id
+          FROM cuotas_contrato cu
+          JOIN contratos co ON cu.contrato_id = co.id
+         WHERE cu.id = ? AND co.codigo_bp = ?
+           AND cu.estado = 'PAGADO' AND cu.recaudo_id IS NOT NULL
+    ");
+    $stmtCuota->execute([$cuota_id, $codigoBp]);
+    $cuota = $stmtCuota->fetch(PDO::FETCH_ASSOC);
+
+    // Mismo mensaje si no existe, no está pagada o es de otro cliente
+    if (!$cuota) {
+        terminar('Recibo no encontrado.', 404);
+    }
+    $recaudo_id = (int)$cuota['recaudo_id'];
+
+    // 2. Cabecera del recibo (también restringida al cliente)
     $stmtRecaudo = $pdo->prepare("
         SELECT tr.*, co.id AS id_contrato, c.Nombre AS cliente_nombre, c.rtn_dni, c.codigo_bp, u.nombre AS cajero_nombre
           FROM transacciones_recaudo tr
@@ -46,37 +63,47 @@ try {
     ");
     $stmtRecaudo->execute([$recaudo_id, $codigoBp]);
     $recaudo = $stmtRecaudo->fetch(PDO::FETCH_ASSOC);
-
-    // Mismo mensaje si no existe o si es de otro cliente
     if (!$recaudo) {
         terminar('Recibo no encontrado.', 404);
     }
 
-    // 2. Cuotas aplicadas a este recibo (también restringidas al cliente)
-    $stmtCuotas = $pdo->prepare("
-        SELECT cu.numero_cuota, cu.monto_pagado AS monto, cu.fecha_vencimiento
+    // 3. ¿Ese pago cubrió más cuotas además de la elegida?
+    $stmtN = $pdo->prepare("
+        SELECT COUNT(*)
           FROM cuotas_contrato cu
           JOIN contratos co ON cu.contrato_id = co.id
          WHERE cu.recaudo_id = ? AND co.codigo_bp = ?
-         ORDER BY cu.numero_cuota ASC
     ");
-    $stmtCuotas->execute([$recaudo_id, $codigoBp]);
-    $cuotasPagadas = $stmtCuotas->fetchAll(PDO::FETCH_ASSOC);
+    $stmtN->execute([$recaudo_id, $codigoBp]);
+    $reciboCompartido = ((int)$stmtN->fetchColumn()) > 1;
 
-    // 3. Detalle de métodos de pago (si existe la tabla)
+    // Solo se imprime la cuota elegida
+    $montoCuota = (float)$cuota['monto_pagado'] > 0 ? (float)$cuota['monto_pagado'] : (float)$cuota['monto_cuota'];
+    $cuotasPagadas = [[
+        'numero_cuota'      => $cuota['numero_cuota'],
+        'monto'             => $montoCuota,
+        'fecha_vencimiento' => $cuota['fecha_vencimiento'],
+    ]];
+
+    // 4. Métodos de pago: solo si el recibo cubrió únicamente esta cuota.
+    //    Si el pago fue compartido, el desglose (efectivo/tarjeta) es del pago completo
+    //    y no se puede repartir por cuota, así que no se muestra.
     $detallesPagos = [];
-    $stmtCheckTabla = $pdo->query("SHOW TABLES LIKE 'recaudo_pagos_detalle'");
-    if ($stmtCheckTabla->rowCount() > 0) {
-        $stmtPagos = $pdo->prepare("SELECT * FROM recaudo_pagos_detalle WHERE id_recaudo = ?");
-        $stmtPagos->execute([$recaudo_id]);
-        $detallesPagos = $stmtPagos->fetchAll(PDO::FETCH_ASSOC);
+    if (!$reciboCompartido) {
+        $stmtCheckTabla = $pdo->query("SHOW TABLES LIKE 'recaudo_pagos_detalle'");
+        if ($stmtCheckTabla->rowCount() > 0) {
+            $stmtPagos = $pdo->prepare("SELECT * FROM recaudo_pagos_detalle WHERE id_recaudo = ?");
+            $stmtPagos->execute([$recaudo_id]);
+            $detallesPagos = $stmtPagos->fetchAll(PDO::FETCH_ASSOC);
+        }
     }
 } catch (Throwable $e) {
     error_log('[portal_recibo] ' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine());
     terminar('No se pudo generar el recibo. Intenta de nuevo más tarde.', 500);
 }
 
-$totalAbonadoRecaudo = (float)($recaudo['monto_total'] ?? 0);
+// Total del comprobante: la cuota elegida si el pago fue compartido; el total del recibo si no
+$totalAbonadoRecaudo = $reciboCompartido ? $montoCuota : (float)($recaudo['monto_total'] ?? 0);
 
 // Nombre de la empresa
 $nombre_empresa = "INVERSIONES J.A";
@@ -236,7 +263,7 @@ try {
             <?php endforeach; ?>
         <?php else: ?>
             <tr>
-                <td class="text-start">Efectivo / Pago Registrado:</td>
+                <td class="text-start"><?php echo $reciboCompartido ? 'Monto de esta cuota:' : 'Efectivo / Pago Registrado:'; ?></td>
                 <td class="text-end">L. <?php echo number_format($totalAbonadoRecaudo, 2); ?></td>
             </tr>
         <?php endif; ?>
@@ -252,6 +279,10 @@ try {
     <div class="divider"></div>
 
     <div class="footer text-center">
+        <?php if ($reciboCompartido): ?>
+            <p>Pago registrado junto con otras cuotas en el recibo N° #<?php echo str_pad($recaudo['id'], 6, '0', STR_PAD_LEFT); ?></p>
+            <div class="divider"></div>
+        <?php endif; ?>
         <p class="fw-bold">¡Gracias por su puntualidad!</p>
         <p>*** Conserve este comprobante ***</p>
     </div>

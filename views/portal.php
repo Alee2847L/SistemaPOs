@@ -185,7 +185,7 @@ async function cargarContratos() {
 function botonRecibo(q) {
     // Solo las cuotas pagadas que tienen un recibo asociado
     if (q.estado !== 'PAGADO' || !q.recaudo_id) return '<span class="text-slate-300">—</span>';
-    return `<a href="portal_recibo.php?id=${Number(q.recaudo_id)}" target="_blank" rel="noopener"
+    return `<a href="portal_recibo.php?cuota=${Number(q.cuota_id)}" target="_blank" rel="noopener"
                class="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg">
                 <i class="fa-solid fa-print"></i> Recibo
             </a>`;

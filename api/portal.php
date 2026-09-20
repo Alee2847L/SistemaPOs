@@ -74,7 +74,7 @@ if ($accion === 'ver_cuotas') {
     if (!$contrato) responder(false, 'Contrato no encontrado', [], 404);
 
     $stmt = $pdo->prepare(
-        "SELECT numero_cuota, fecha_vencimiento, monto_cuota,
+        "SELECT id AS cuota_id, numero_cuota, fecha_vencimiento, monto_cuota,
                 COALESCE(monto_pagado, 0) AS monto_pagado, fecha_pago, estado, recaudo_id
            FROM cuotas_contrato
           WHERE contrato_id = ?
