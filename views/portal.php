@@ -145,7 +145,7 @@ document.getElementById('btnVolver').addEventListener('click', () => {
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
                 <thead class="bg-slate-50 text-slate-500 uppercase text-[11px]">
-                    <tr><th class="p-2">#</th><th class="p-2">Vencimiento</th><th class="p-2 text-right">Cuota</th><th class="p-2">Fecha de pago</th><th class="p-2 text-center">Estado</th></tr>
+                    <tr><th class="p-2">#</th><th class="p-2">Vencimiento</th><th class="p-2 text-right">Cuota</th><th class="p-2">Fecha de pago</th><th class="p-2 text-center">Estado</th><th class="p-2 text-center no-print">Recibo</th></tr>
                 </thead>
                 <tbody id="tablaCuotas"></tbody>
             </table>
@@ -182,6 +182,15 @@ async function cargarContratos() {
         </div>`).join('');
 }
 
+function botonRecibo(q) {
+    // Solo las cuotas pagadas que tienen un recibo asociado
+    if (q.estado !== 'PAGADO' || !q.recaudo_id) return '<span class="text-slate-300">—</span>';
+    return `<a href="portal_recibo.php?id=${Number(q.recaudo_id)}" target="_blank" rel="noopener"
+               class="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg">
+                <i class="fa-solid fa-print"></i> Recibo
+            </a>`;
+}
+
 function badgeEstado(estado) {
     const estilos = {
         PAGADO:    'bg-emerald-100 text-emerald-700',
@@ -209,6 +218,7 @@ async function verCuotas(id) {
             <td class="p-2 text-right">${money(q.monto_cuota)}</td>
             <td class="p-2 text-slate-500">${q.fecha_pago ? esc(String(q.fecha_pago).substring(0, 10)) : '—'}</td>
             <td class="p-2 text-center">${badgeEstado(q.estado)}</td>
+            <td class="p-2 text-center no-print">${botonRecibo(q)}</td>
         </tr>`).join('');
     const det = document.getElementById('detalle');
     det.classList.remove('hidden');

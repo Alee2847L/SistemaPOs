@@ -75,7 +75,7 @@ if ($accion === 'ver_cuotas') {
 
     $stmt = $pdo->prepare(
         "SELECT numero_cuota, fecha_vencimiento, monto_cuota,
-                COALESCE(monto_pagado, 0) AS monto_pagado, fecha_pago, estado
+                COALESCE(monto_pagado, 0) AS monto_pagado, fecha_pago, estado, recaudo_id
            FROM cuotas_contrato
           WHERE contrato_id = ?
           ORDER BY numero_cuota ASC"
