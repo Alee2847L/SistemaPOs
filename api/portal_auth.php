@@ -29,19 +29,59 @@ function hashCodigo(string $codigo, string $bp): string {
     return hash('sha256', $codigo . '|' . $bp);
 }
 
-/**
- * Reemplaza esto por el mismo mecanismo que ya usas en
- * 'solicitar_recuperacion' de api/auth.php (PHPMailer, etc.).
- */
-function enviarCodigoPorCorreo(string $email, string $nombre, string $codigo): bool {
-    $asunto  = 'Tu código de acceso';
-    $mensaje = "Hola $nombre,\n\nTu código de acceso es: $codigo\n"
-             . "Vence en " . OTP_MINUTOS . " minutos. Si no lo solicitaste, ignora este mensaje.";
-    $ok = @mail($email, $asunto, $mensaje, "Content-Type: text/plain; charset=UTF-8");
-    if (!$ok) {
-        error_log('[portal_auth] No se pudo enviar el correo a ' . $email . ' (revisa la configuración de correo del servidor).');
+/** Carga el .env (mismo archivo y formato que usa enviar_recordatorios_cuotas.php) si aún no está cargado. */
+function cargarEnvSiHaceFalta(): void {
+    if (!empty($_ENV['MAIL_HOST']) || !empty($_ENV['MAIL_USER'])) return;
+    $envPath = __DIR__ . '/../../.env';
+    if (!file_exists($envPath)) return;
+    foreach (file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (strpos(trim($line), '#') === 0 || strpos($line, '=') === false) continue;
+        [$name, $value] = explode('=', $line, 2);
+        $_ENV[trim($name)] = trim($value);
     }
-    return $ok;
+}
+
+/** Envía el código por SMTP (PHPMailer + Brevo), igual que los recordatorios de cuotas. */
+function enviarCodigoPorCorreo(string $email, string $nombre, string $codigo): bool {
+    cargarEnvSiHaceFalta();
+    require_once __DIR__ . '/../phpmailer/Exception.php';
+    require_once __DIR__ . '/../phpmailer/PHPMailer.php';
+    require_once __DIR__ . '/../phpmailer/SMTP.php';
+
+    $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = $_ENV['MAIL_HOST'] ?? 'smtp-relay.brevo.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $_ENV['MAIL_USER'] ?? '';
+        $mail->Password   = $_ENV['MAIL_PASS'] ?? '';
+        $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = (int)($_ENV['MAIL_PORT'] ?? 587);
+        $mail->CharSet    = 'UTF-8';
+
+        $mail->setFrom($_ENV['MAIL_FROM'] ?? 'noreply@misistemapos.com', $_ENV['MAIL_NAME'] ?? 'Portal de Clientes');
+        $mail->addAddress($email, $nombre);
+
+        $mail->isHTML(true);
+        $mail->Subject = 'Tu código de acceso: ' . $codigo;
+        $nombreSeguro  = htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8');
+        $mail->Body = "
+            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+                <h2 style='color: #4f46e5;'>Código de acceso</h2>
+                <p>Hola <strong>{$nombreSeguro}</strong>,</p>
+                <p>Usa este código para ingresar al portal de clientes:</p>
+                <p style='font-size: 32px; letter-spacing: 8px; font-weight: bold; color: #4f46e5; text-align: center;
+                          background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;'>{$codigo}</p>
+                <p>Vence en " . OTP_MINUTOS . " minutos. Si no lo solicitaste, ignora este mensaje.</p>
+            </div>";
+        $mail->AltBody = "Tu código de acceso es: $codigo (vence en " . OTP_MINUTOS . " minutos).";
+
+        $mail->send();
+        return true;
+    } catch (Throwable $e) {
+        error_log('[portal_auth] Error enviando correo: ' . $mail->ErrorInfo . ' | ' . $e->getMessage());
+        return false;
+    }
 }
 
 function buscarCliente(PDO $pdo, string $identificador): ?array {
@@ -75,7 +115,10 @@ if ($accion === 'solicitar_codigo') {
     $generico = 'Si los datos son correctos, enviamos un código al correo registrado.';
 
     $cliente = buscarCliente($pdo, $identificador);
-    if (!$cliente) responder(true, $generico);
+    if (!$cliente) {
+        error_log('[portal_auth] solicitar_codigo: no hay un cliente activo con correo que coincida con el dato ingresado.');
+        responder(true, $generico);
+    }
 
     // Límites de frecuencia
     $q = $pdo->prepare("SELECT COUNT(*) FROM cliente_otp WHERE codigo_bp = ? AND creado_en > (NOW() - INTERVAL 1 HOUR)");
