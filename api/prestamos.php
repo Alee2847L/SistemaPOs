@@ -152,6 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    $contratoParaPlan = null;   // se llena solo si el contrato se guardó bien
+
     try {
         $pdo->beginTransaction();
 
@@ -194,10 +196,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->commit();
+        $contratoParaPlan = (int)$contrato_id;
         echo json_encode(['success' => true, 'message' => 'Préstamo y cuotas registradas con éxito']);
     } catch (Exception $e) {
         $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'Error al guardar: ' . $e->getMessage()]);
+    }
+
+    // Enviar el plan de pagos al cliente por correo.
+    // Ya se respondió al usuario: si el servidor lo permite (PHP-FPM) se cierra la respuesta
+    // antes de enviar, así la pantalla no espera al SMTP. Si el correo falla, el contrato queda igual.
+    if ($contratoParaPlan) {
+        ignore_user_abort(true);
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+        require_once __DIR__ . '/enviar_plan_pagos.php';
+        enviarPlanPagosPorCorreo($pdo, $contratoParaPlan);
     }
     exit;
 }
