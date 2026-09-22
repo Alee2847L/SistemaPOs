@@ -67,6 +67,23 @@ try {
     $cliente_identidad = $cliente['rtn_dni'] ?? '0000000000000';
     $limite_actual_cliente = floatval($cliente['limite_credito'] ?? 0);
 
+    // Validación de mora: no se procesa una venta a crédito (nuevo contrato/cuotas)
+    // si el cliente ya tiene cuotas vencidas sin pagar de un contrato activo.
+    // Se valida ANTES de tocar factura/inventario para no consumir un número de
+    // factura ni descontar stock en una venta que de todas formas se va a rechazar.
+    if ($esCredito && !$esCotizacion && !$esPendiente) {
+        require_once __DIR__ . '/mora_helper.php';
+        $mora = clienteTieneMora($pdo, $codigo_bp);
+        if ($mora['en_mora']) {
+            echo json_encode([
+                'success' => false,
+                'message' => "No se puede procesar la venta a crédito: el cliente tiene {$mora['cantidad_cuotas_vencidas']} cuota(s) en mora (vencida(s) y sin pagar). Debe ponerse al día antes de financiar una nueva compra.",
+                'en_mora' => true
+            ]);
+            exit;
+        }
+    }
+
     // 2. Calcular total de la venta
     $totalVenta = 0;
     foreach ($carrito as $p) {
@@ -321,8 +338,10 @@ try {
 
         $contrato_id = $pdo->lastInsertId();
 
-        $monto_cuota = $plazo_meses > 0 ? ($total_credito / $plazo_meses) : $total_credito;
-        
+        // Redondeo a centavos: cada cuota se calcula a 2 decimales y la última
+        // absorbe la diferencia, para que la suma cuadre exacto con total_credito.
+        $monto_cuota_base = $plazo_meses > 0 ? round($total_credito / $plazo_meses, 2) : round($total_credito, 2);
+
         $sqlCuota = "INSERT INTO cuotas_contrato (
                         contrato_id, numero_cuota, monto_cuota, fecha_vencimiento, monto_pagado, estado
                      ) VALUES (
@@ -330,8 +349,18 @@ try {
                      )";
         $stmtCuota = $pdo->prepare($sqlCuota);
 
+        $sumaCuotas = 0.0;
         for ($i = 1; $i <= $plazo_meses; $i++) {
             $fecha_vencimiento = date('Y-m-d', strtotime("+$i month", strtotime($fecha_inicio)));
+
+            if ($i < $plazo_meses) {
+                $monto_cuota = $monto_cuota_base;
+            } else {
+                // Última cuota: lo que falte para llegar exacto al total_credito
+                $monto_cuota = round($total_credito - $sumaCuotas, 2);
+            }
+            $sumaCuotas += $monto_cuota;
+
             $stmtCuota->execute([
                 $contrato_id,
                 $i,

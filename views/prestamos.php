@@ -178,6 +178,10 @@ try {
                     </div>
                     <input type="hidden" id="prestamo_codigo_bp" value="">
                     <input type="hidden" id="prestamo_limite_disp" value="0">
+                    <div id="banner_mora_prestamo" class="hidden mt-2 p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-700 font-semibold flex items-start gap-2">
+                        <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                        <span id="banner_mora_prestamo_texto"></span>
+                    </div>
                 </div>
 
                 <div>
@@ -238,7 +242,7 @@ try {
 
                 <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
                     <button type="button" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition" onclick="cerrarModalNuevoPrestamo()">Cancelar</button>
-                    <button type="submit" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition shadow-xs flex items-center gap-1.5">
+                    <button type="submit" id="btn_submit_prestamo" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition shadow-xs flex items-center gap-1.5">
                         <i class="fa-solid fa-check"></i> Guardar y Generar Cuotas
                     </button>
                 </div>
@@ -519,6 +523,28 @@ try {
             document.getElementById('lbl_prestamo_cli_limite').innerText = 'L. ' + limite.toFixed(2);
             document.getElementById('input_buscar_cliente_prestamo').value = '';
             document.getElementById('sugerencias_cliente_prestamo').classList.add('hidden');
+
+            // Verificar si el cliente tiene cuotas vencidas (mora) antes de permitir
+            // continuar con el préstamo. Solo se considera mora si la cuota venció
+            // hoy o antes; si la próxima cuota es de mañana en adelante, está al día.
+            const bannerMora = document.getElementById('banner_mora_prestamo');
+            const bannerMoraTexto = document.getElementById('banner_mora_prestamo_texto');
+            const btnSubmit = document.getElementById('btn_submit_prestamo');
+            bannerMora.classList.add('hidden');
+            btnSubmit.disabled = false;
+            btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            fetch(`../api/prestamos.php?accion=verificar_mora&codigo_bp=${encodeURIComponent(codigo_bp)}`)
+                .then(res => res.json())
+                .then(resMora => {
+                    if (resMora.success && resMora.en_mora) {
+                        bannerMoraTexto.innerText = `Este cliente tiene ${resMora.cantidad_cuotas_vencidas} cuota(s) en mora (vencida(s) sin pagar). Debe ponerse al día antes de otorgarle un nuevo préstamo.`;
+                        bannerMora.classList.remove('hidden');
+                        btnSubmit.disabled = true;
+                        btnSubmit.classList.add('opacity-50', 'cursor-not-allowed');
+                    }
+                })
+                .catch(() => { /* si falla la verificación, el backend igual bloqueará al guardar */ });
         }
 
         function actualizarOpcionesPlazo() {
@@ -579,6 +605,10 @@ try {
             document.getElementById('lbl_prestamo_cli_nombre').innerText = 'Ninguno seleccionado';
             document.getElementById('lbl_prestamo_cli_bp').innerText = 'BP000';
             document.getElementById('lbl_prestamo_cli_limite').innerText = 'L. 0.00';
+            document.getElementById('banner_mora_prestamo').classList.add('hidden');
+            const btnSubmit = document.getElementById('btn_submit_prestamo');
+            btnSubmit.disabled = false;
+            btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
             actualizarOpcionesPlazo();
             document.getElementById('modalNuevoPrestamo').classList.remove('hidden');
         }

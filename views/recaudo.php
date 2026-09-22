@@ -155,6 +155,10 @@ try {
                         </select>
                     </div>
                 </div>
+                <div id="banner_mora_cuotas" class="hidden mb-3 p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-700 font-semibold flex items-start gap-2">
+                    <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                    <span id="banner_mora_cuotas_texto"></span>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
@@ -280,6 +284,25 @@ try {
             return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
+        // --- HELPERS DE FECHA (para detectar cuotas en mora) ---
+        // Se comparan como texto 'YYYY-MM-DD' (igual formato que devuelve la BD),
+        // así se evitan los problemas de zona horaria de "new Date('YYYY-MM-DD')".
+        function fechaHoyISO() {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function diasEntreFechasISO(fechaMenor, fechaMayor) {
+            const [y1, m1, d1] = fechaMenor.split('-').map(Number);
+            const [y2, m2, d2] = fechaMayor.split('-').map(Number);
+            const utc1 = Date.UTC(y1, m1 - 1, d1);
+            const utc2 = Date.UTC(y2, m2 - 1, d2);
+            return Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+        }
+
         // --- BUSCADOR DE CLIENTES ---
         function buscarClienteRecaudo(query) {
             clearTimeout(timeoutBusqueda);
@@ -400,26 +423,67 @@ try {
             const tbody = document.getElementById('tablaCuotasPendientes');
             if (listaCuotasContrato.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400 py-4">No hay cuotas pendientes</td></tr>';
+                mostrarAvisoMoraCuotas(false, [], fechaHoyISO());
                 return;
             }
+
+            const hoy = fechaHoyISO();
+            // ¿Tiene alguna cuota pendiente ya vencida (en mora)? De ser así, solo se
+            // pueden seleccionar/pagar esas cuotas; las futuras quedan bloqueadas
+            // hasta que el cliente se ponga al día.
+            const hayMora = listaCuotasContrato.some(c => (c.estado || '').toLowerCase() !== 'pagado' && c.fecha_vencimiento <= hoy);
 
             let html = '';
             listaCuotasContrato.forEach((cuota, index) => {
                 const pagada = (cuota.estado || '').toLowerCase() === 'pagado';
+                const enMora = !pagada && cuota.fecha_vencimiento <= hoy;
+                const diasMora = enMora ? diasEntreFechasISO(cuota.fecha_vencimiento, hoy) : 0;
+                const bloqueadaPorMora = !pagada && hayMora && !enMora;
+                const deshabilitada = pagada || bloqueadaPorMora;
+
+                let etiquetaEstado = (cuota.estado || '').toUpperCase();
+                let claseEstado = 'bg-amber-100 text-amber-700';
+                if (pagada) {
+                    claseEstado = 'bg-slate-200 text-slate-600';
+                } else if (enMora) {
+                    etiquetaEstado = `EN MORA (${diasMora === 0 ? 'hoy' : diasMora + (diasMora === 1 ? ' día' : ' días')})`;
+                    claseEstado = 'bg-rose-100 text-rose-700';
+                }
+
                 html += `
-                    <tr class="hover:bg-slate-50 border-b border-slate-100 ${pagada ? 'bg-slate-100/50 text-slate-400' : ''}">
+                    <tr class="hover:bg-slate-50 border-b border-slate-100 ${pagada ? 'bg-slate-100/50 text-slate-400' : ''} ${enMora ? 'bg-rose-50/60' : ''}">
                         <td class="p-2.5 text-center">
-                            <input type="checkbox" class="chk-cuota" value="${cuota.id_cuota}" data-monto="${cuota.monto}" ${pagada ? 'disabled' : ''} onchange="calcularTotalCobrar()">
+                            <input type="checkbox" class="chk-cuota" value="${cuota.id_cuota}" data-monto="${cuota.monto}" ${deshabilitada ? 'disabled' : ''} title="${bloqueadaPorMora ? 'Debe pagar primero las cuotas en mora' : ''}" onchange="calcularTotalCobrar()">
                         </td>
-                        <td class="p-2.5 font-bold">Cuota #${cuota.numero_cuota}</td>
-                        <td class="p-2.5">${cuota.fecha_vencimiento}</td>
-                        <td class="p-2.5 font-semibold text-slate-800">L. ${Number(cuota.monto).toFixed(2)}</td>
-                        <td class="p-2.5"><span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${pagada ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'}">${(cuota.estado || '').toUpperCase()}</span></td>
+                        <td class="p-2.5 font-bold ${enMora ? 'text-rose-700' : ''}">Cuota #${cuota.numero_cuota}</td>
+                        <td class="p-2.5 ${enMora ? 'text-rose-700 font-semibold' : ''}">${cuota.fecha_vencimiento}</td>
+                        <td class="p-2.5 font-semibold ${enMora ? 'text-rose-700' : 'text-slate-800'}">L. ${Number(cuota.monto).toFixed(2)}</td>
+                        <td class="p-2.5"><span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${claseEstado}">${etiquetaEstado}</span></td>
                     </tr>
                 `;
             });
             tbody.innerHTML = html;
+
+            mostrarAvisoMoraCuotas(hayMora, listaCuotasContrato, hoy);
             calcularTotalCobrar();
+        }
+
+        function mostrarAvisoMoraCuotas(hayMora, cuotas, hoy) {
+            const banner = document.getElementById('banner_mora_cuotas');
+            const texto = document.getElementById('banner_mora_cuotas_texto');
+            const selectModo = document.getElementById('select_tipo_pago_modalidad');
+            const optTotal = selectModo ? selectModo.querySelector('option[value="total"]') : null;
+
+            if (hayMora) {
+                const cuotasVencidas = cuotas.filter(c => (c.estado || '').toLowerCase() !== 'pagado' && c.fecha_vencimiento <= hoy);
+                texto.innerText = `Este contrato tiene ${cuotasVencidas.length} cuota(s) en mora. Solo puede cobrar las cuotas vencidas; no se permite adelantar cuotas futuras hasta que el cliente se ponga al día.`;
+                banner.classList.remove('hidden');
+                if (optTotal) optTotal.disabled = true;
+                if (selectModo && selectModo.value === 'total') selectModo.value = 'cuota';
+            } else {
+                banner.classList.add('hidden');
+                if (optTotal) optTotal.disabled = false;
+            }
         }
 
         function seleccionarTodasCuotas(master) {
@@ -545,6 +609,23 @@ try {
             if (cuotasSeleccionadas.length === 0) {
                 alert('Seleccione al menos una cuota para pagar.');
                 return;
+            }
+
+            // Verificación de mora: si el contrato tiene cuotas vencidas sin pagar,
+            // no se permite incluir en el cobro ninguna cuota futura (no vencida).
+            // El backend valida esto también; esto es solo una segunda barrera.
+            const hoyMora = fechaHoyISO();
+            const hayMoraEnvio = listaCuotasContrato.some(c => (c.estado || '').toLowerCase() !== 'pagado' && c.fecha_vencimiento <= hoyMora);
+            if (hayMoraEnvio) {
+                const seleccionoFutura = listaCuotasContrato.some(c =>
+                    cuotasSeleccionadas.includes(String(c.id_cuota)) &&
+                    (c.estado || '').toLowerCase() !== 'pagado' &&
+                    c.fecha_vencimiento > hoyMora
+                );
+                if (seleccionoFutura) {
+                    alert('⚠️ Este contrato tiene cuotas en mora. Debe pagar primero las cuotas vencidas antes de adelantar cuotas futuras.');
+                    return;
+                }
             }
 
             if (listaPagosRecaudo.length === 0) {

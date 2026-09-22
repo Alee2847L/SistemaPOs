@@ -51,6 +51,36 @@ try {
         throw new Exception("El monto total del recaudo debe ser mayor a cero.");
     }
 
+    // Validación de mora: si el contrato tiene cuotas vencidas sin pagar, solo se
+    // permite cobrar esas cuotas en mora; no se puede adelantar cuotas futuras
+    // (no vencidas) mientras queden cuotas vencidas pendientes de pago.
+    $stmtCuotasContrato = $pdo->prepare("SELECT id, fecha_vencimiento, estado FROM cuotas_contrato WHERE contrato_id = ?");
+    $stmtCuotasContrato->execute([$id_contrato]);
+    $todasCuotasContrato = $stmtCuotasContrato->fetchAll(PDO::FETCH_ASSOC);
+
+    $hoy = date('Y-m-d');
+    $idsEnMora = [];
+    foreach ($todasCuotasContrato as $c) {
+        if (strtoupper($c['estado']) !== 'PAGADO' && $c['fecha_vencimiento'] <= $hoy) {
+            $idsEnMora[] = (string)$c['id'];
+        }
+    }
+
+    if (!empty($idsEnMora)) {
+        $cuotasSeleccionadasStr = array_map('strval', $cuotas);
+        $seleccionoFutura = false;
+        foreach ($todasCuotasContrato as $c) {
+            $idStr = (string)$c['id'];
+            if (in_array($idStr, $cuotasSeleccionadasStr, true) && strtoupper($c['estado']) !== 'PAGADO' && !in_array($idStr, $idsEnMora, true)) {
+                $seleccionoFutura = true;
+                break;
+            }
+        }
+        if ($seleccionoFutura) {
+            throw new Exception("Este contrato tiene " . count($idsEnMora) . " cuota(s) en mora. Debe pagar primero las cuotas vencidas antes de adelantar cuotas futuras.");
+        }
+    }
+
     // Determinar etiqueta general de tipo_pago
     if ($montoEfectivo > 0 && $montoTarjeta > 0) {
         $tipoPago = 'AMBOS';
@@ -110,4 +140,4 @@ try {
     $pdo->rollBack();
     echo json_encode(['success' => false, 'message' => 'Error en base de datos: ' . $e->getMessage()]);
 }
-?>
+?> 

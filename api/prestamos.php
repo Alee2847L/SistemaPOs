@@ -133,6 +133,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'contratos_por_cliente')
     exit;
 }
 
+// 1.7 Verificar si un cliente está en mora (cuotas vencidas sin pagar), usado
+// tanto por el formulario de nuevo préstamo como por pos.php antes de ofrecer
+// la modalidad de crédito.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'verificar_mora') {
+    $codigo_bp = trim($_GET['codigo_bp'] ?? '');
+    if (empty($codigo_bp)) {
+        echo json_encode(['success' => false, 'message' => 'Código BP requerido']);
+        exit;
+    }
+    try {
+        require_once __DIR__ . '/mora_helper.php';
+        $mora = clienteTieneMora($pdo, $codigo_bp);
+        echo json_encode(array_merge(['success' => true], $mora));
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // 2. Guardar nuevo contrato (préstamo)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
@@ -162,6 +181,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($codigo_bp) || $monto_financiar <= 0) {
         echo json_encode(['success' => false, 'message' => 'Datos incompletos o inválidos.']);
+        exit;
+    }
+
+    // Validación de mora: no se otorgan préstamos nuevos a un cliente que ya
+    // tenga cuotas vencidas sin pagar en un contrato activo.
+    require_once __DIR__ . '/mora_helper.php';
+    $mora = clienteTieneMora($pdo, $codigo_bp);
+    if ($mora['en_mora']) {
+        echo json_encode([
+            'success' => false,
+            'message' => "No se puede otorgar el préstamo: el cliente tiene {$mora['cantidad_cuotas_vencidas']} cuota(s) en mora (vencida(s) y sin pagar). Debe ponerse al día antes de procesar un nuevo préstamo.",
+            'en_mora' => true
+        ]);
         exit;
     }
 
