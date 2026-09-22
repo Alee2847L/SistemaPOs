@@ -47,7 +47,7 @@ if (!function_exists('generarPdfFactura')) {
             $contratoId = (int)($stmtC->fetchColumn() ?: 0) ?: null;
         }
 
-        $htmlFactura = construirHtmlFactura($venta, $detalles, $empresa);
+        $htmlFactura = construirHtmlFactura($venta, $detalles, $empresa, $pdo);
         $htmlPlan    = $contratoId ? construirHtmlPlanPagos($pdo, $contratoId) : null;
 
         $numero = $venta['numero_factura'] ?: ('#' . $venta['id_transaccion']);

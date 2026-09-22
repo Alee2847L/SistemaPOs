@@ -264,7 +264,7 @@ try {
                     <i class="fa-solid fa-file-invoice"></i> Plan de Pagos del Cliente
                 </h4>
                 <div class="flex items-center gap-2">
-                    <button onclick="imprimirPlanPagos()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
+                    <button id="btn_imprimir_plan_pagos" onclick="imprimirPlanPagos()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
                         <i class="fa-solid fa-print"></i> Imprimir
                     </button>
                     <button type="button" onclick="cerrarModalPlanPagos()" class="text-white/80 hover:text-white p-1 text-lg"><i class="fa-solid fa-xmark"></i></button>
@@ -286,11 +286,20 @@ try {
                     <div>
                         <span class="text-slate-500 block">Resumen Financiero:</span>
                         <span class="text-slate-700">Monto: <b id="plan_monto_fin">L. 0.00</b></span><br>
-                        <span class="text-slate-700">Total con Interés: <b id="plan_total_cred">L. 0.00</b></span>
+                        <span class="text-slate-700">Total con Interés: <b id="plan_total_cred">L. 0.00</b></span><br>
+                        <span id="plan_prima_linea" class="text-slate-700 hidden">
+                            Prima: <b id="plan_prima_monto">L. 0.00</b>
+                            <span id="plan_prima_badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold"></span>
+                        </span>
                     </div>
                 </div>
 
-                <div class="overflow-x-auto rounded-xl border border-slate-200">
+                <div id="aviso_prima_pendiente_plan" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs p-4 rounded-xl flex items-start gap-2">
+                    <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                    <span>Este contrato tiene una <b>prima pendiente de cobro</b>. El plan de pagos y las cuotas se muestran una vez que la prima se cobre en el POS (buscando a este cliente).</span>
+                </div>
+
+                <div id="contenedor_tabla_plan_cuotas" class="overflow-x-auto rounded-xl border border-slate-200">
                     <table class="w-full text-left border-collapse">
                         <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[11px] font-semibold">
                             <tr>
@@ -674,6 +683,47 @@ try {
                         document.getElementById('plan_monto_fin').innerText = 'L. ' + Number(c.monto_financiar).toLocaleString('en-US', {minimumFractionDigits: 2});
                         document.getElementById('plan_total_cred').innerText = 'L. ' + Number(c.total_credito).toLocaleString('en-US', {minimumFractionDigits: 2});
 
+                        // --- Estado de la prima: si el contrato tiene prima y todavía no
+                        // se ha cobrado en POS (contratos.prima_venta_id sigue en NULL),
+                        // no se muestra el plan de pagos hasta que se cobre.
+                        const prima = parseFloat(c.prima) || 0;
+                        const primaCobrada = !!c.prima_venta_id;
+                        const primaPendiente = prima > 0 && !primaCobrada;
+
+                        const lineaPrima = document.getElementById('plan_prima_linea');
+                        const badgePrima = document.getElementById('plan_prima_badge');
+                        const avisoPendiente = document.getElementById('aviso_prima_pendiente_plan');
+                        const contenedorTabla = document.getElementById('contenedor_tabla_plan_cuotas');
+                        const btnImprimir = document.getElementById('btn_imprimir_plan_pagos');
+
+                        if (prima > 0) {
+                            lineaPrima.classList.remove('hidden');
+                            document.getElementById('plan_prima_monto').innerText = 'L. ' + prima.toLocaleString('en-US', {minimumFractionDigits: 2});
+                            if (primaCobrada) {
+                                badgePrima.innerText = 'COBRADA';
+                                badgePrima.className = 'ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700';
+                            } else {
+                                badgePrima.innerText = 'PENDIENTE';
+                                badgePrima.className = 'ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700';
+                            }
+                        } else {
+                            lineaPrima.classList.add('hidden');
+                        }
+
+                        if (primaPendiente) {
+                            avisoPendiente.classList.remove('hidden');
+                            contenedorTabla.classList.add('hidden');
+                            btnImprimir.disabled = true;
+                            btnImprimir.classList.add('opacity-50', 'cursor-not-allowed');
+                            document.getElementById('tablaPlanCuotas').innerHTML = '';
+                            return;
+                        }
+
+                        avisoPendiente.classList.add('hidden');
+                        contenedorTabla.classList.remove('hidden');
+                        btnImprimir.disabled = false;
+                        btnImprimir.classList.remove('opacity-50', 'cursor-not-allowed');
+
                         let html = '';
                         let saldoRestante = parseFloat(c.total_credito);
                         let totalCuotas = cuotas.length;
@@ -684,7 +734,7 @@ try {
                             saldoRestante -= montoCuota;
                             if (saldoRestante < 0) saldoRestante = 0;
 
-                            const estadoBadge = cuota.estado === 'PAGADO' 
+                            const estadoBadge = cuota.estado === 'PAGADO'
                                 ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">PAGADO</span>'
                                 : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">PENDIENTE</span>';
 

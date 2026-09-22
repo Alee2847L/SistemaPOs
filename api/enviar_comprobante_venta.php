@@ -30,8 +30,12 @@ if (!function_exists('nombreEmpresaParaCorreo')) {
     }
 }
 
-/** Arma la tabla HTML de una factura (subtotal, ISV, descuento, total, abono, cambio). */
-function construirHtmlFactura(array $venta, array $detalles, string $empresa): string {
+/**
+ * Arma la tabla HTML de una factura (subtotal, ISV, descuento, total, abono, cambio).
+ * $pdo es opcional: solo se usa para resolver el número de contrato cuando la venta es
+ * un cobro de prima de préstamo, que no tiene renglones en detalle_ventas.
+ */
+function construirHtmlFactura(array $venta, array $detalles, string $empresa, ?PDO $pdo = null): string {
     $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
     $L = fn($n) => 'L. ' . number_format((float)$n, 2);
 
@@ -54,6 +58,34 @@ function construirHtmlFactura(array $venta, array $detalles, string $empresa): s
             <td style='padding:6px 8px; border-bottom:1px solid #e2e8f0; text-align:right;'>{$L($precioUnit)}</td>
             <td style='padding:6px 8px; border-bottom:1px solid #e2e8f0; text-align:right;'>{$L($subtotalItem)}</td>
         </tr>";
+    }
+
+    // La prima de préstamo (y su reversión al anular) no tienen renglones reales en
+    // detalle_ventas (no es un producto del catálogo), así que se arma un renglón
+    // descriptivo propio en vez de dejar la tabla vacía.
+    if (empty($detalles)) {
+        $tipoComp = (string)($venta['tipo_comprobante'] ?? '');
+        if ($tipoComp === 'Prima de Préstamo' || $tipoComp === 'Prima de Préstamo (Anulada)') {
+            $contratoId = null;
+            if ($pdo && $tipoComp === 'Prima de Préstamo') {
+                try {
+                    $stmtC = $pdo->prepare("SELECT id FROM contratos WHERE prima_venta_id = ? LIMIT 1");
+                    $stmtC->execute([$venta['id_transaccion']]);
+                    $contratoId = $stmtC->fetchColumn() ?: null;
+                } catch (Throwable $e) { /* si falla la búsqueda, se muestra sin número de contrato */ }
+            }
+
+            $descripcion = $tipoComp === 'Prima de Préstamo'
+                ? ('Pago por prima' . ($contratoId ? " a contrato #{$contratoId}" : ''))
+                : 'Reversión de prima de préstamo (anulación de contrato)';
+
+            $filas .= "<tr>
+                <td style='padding:6px 8px; border-bottom:1px solid #e2e8f0; text-align:center;'>1</td>
+                <td style='padding:6px 8px; border-bottom:1px solid #e2e8f0;'>{$h($descripcion)}</td>
+                <td style='padding:6px 8px; border-bottom:1px solid #e2e8f0; text-align:right;'>{$L($totalVenta)}</td>
+                <td style='padding:6px 8px; border-bottom:1px solid #e2e8f0; text-align:right;'>{$L($totalVenta)}</td>
+            </tr>";
+        }
     }
 
     $descuentoFila = '';

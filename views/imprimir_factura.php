@@ -50,6 +50,20 @@ try {
     $stmtPago->execute([$venta_id]);
     $pagoInfo = $stmtPago->fetch(PDO::FETCH_ASSOC);
 
+    // 4. La prima de préstamo (y su reversión al anular) no tienen renglones reales en
+    // detalle_ventas (no es un producto del catálogo), así que se arma una descripción
+    // propia en vez de mostrar la tabla vacía.
+    $tipoComprobanteVenta = (string)($venta['tipo_comprobante'] ?? '');
+    $descripcionPrima = null;
+    if (empty($detalles) && $tipoComprobanteVenta === 'Prima de Préstamo') {
+        $stmtContratoPrima = $pdo->prepare("SELECT id FROM contratos WHERE prima_venta_id = ? LIMIT 1");
+        $stmtContratoPrima->execute([$venta_id]);
+        $contratoIdPrima = $stmtContratoPrima->fetchColumn();
+        $descripcionPrima = 'Pago por prima' . ($contratoIdPrima ? " a contrato #{$contratoIdPrima}" : '');
+    } elseif (empty($detalles) && $tipoComprobanteVenta === 'Prima de Préstamo (Anulada)') {
+        $descripcionPrima = 'Reversión de prima de préstamo (anulación de contrato)';
+    }
+
 } catch (PDOException $e) {
     die("Error en la base de datos: " . $e->getMessage());
 }
@@ -219,6 +233,13 @@ try {
                     <td class="text-end"><?php echo number_format($subtotalItem, 2); ?></td>
                 </tr>
                 <?php endforeach; ?>
+            <?php elseif ($descripcionPrima): ?>
+                <tr>
+                    <td class="text-start">1</td>
+                    <td class="text-start"><?php echo htmlspecialchars($descripcionPrima); ?></td>
+                    <td class="text-end"><?php echo number_format($totalVenta, 2); ?></td>
+                    <td class="text-end"><?php echo number_format($totalVenta, 2); ?></td>
+                </tr>
             <?php else: ?>
                 <tr>
                     <td colspan="4" class="text-center">Sin detalles registrados</td>
