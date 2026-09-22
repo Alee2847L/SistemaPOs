@@ -215,6 +215,12 @@ try {
                     </div>
                 </div>
 
+                <div>
+                    <label class="block font-semibold text-xs text-slate-700 mb-1">Fecha del Primer Pago:</label>
+                    <input type="date" id="prestamo_fecha_primer_pago" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition">
+                    <p class="text-[11px] text-slate-400 mt-1">Por defecto, 15 días después de hoy. Puedes elegir otra fecha si lo necesitas.</p>
+                </div>
+
                 <div class="bg-purple-50 border border-purple-200 p-4 rounded-xl space-y-2">
                     <div class="flex justify-between text-slate-700 text-xs sm:text-sm">
                         <span>Capital Financiar:</span>
@@ -440,9 +446,14 @@ try {
 
             let html = '';
             prestamos.forEach(p => {
-                const estadoBadge = p.estado === 'ACTIVO' 
-                    ? '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">ACTIVO</span>'
-                    : '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">FINALIZADO</span>';
+                let estadoBadge;
+                if (p.estado === 'ACTIVO') {
+                    estadoBadge = '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">ACTIVO</span>';
+                } else if (p.estado === 'CANCELADO') {
+                    estadoBadge = '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">CANCELADO</span>';
+                } else {
+                    estadoBadge = '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">FINALIZADO</span>';
+                }
 
                 html += `
                     <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
@@ -460,6 +471,10 @@ try {
                             <button type="button" class="bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs px-3 py-1.5 rounded-lg font-medium transition inline-flex items-center gap-1" onclick="abrirPlanPagos(${p.id})">
                                 <i class="fa-solid fa-list-check"></i> Plan de Pagos
                             </button>
+                            ${p.estado === 'ACTIVO' ? `
+                            <a href="anular_prestamo.php?contrato_id=${p.id}" class="bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs px-3 py-1.5 rounded-lg font-medium transition inline-flex items-center gap-1 ml-1">
+                                <i class="fa-solid fa-file-circle-xmark"></i> Anular
+                            </a>` : ''}
                         </td>
                     </tr>
                 `;
@@ -551,8 +566,15 @@ try {
             };
         }
 
+        function fechaPorDefectoPrimerPago() {
+            const f = new Date();
+            f.setDate(f.getDate() + 15);
+            return f.toISOString().split('T')[0];
+        }
+
         function abrirModalNuevoPrestamo() {
             document.getElementById('formNuevoPrestamo').reset();
+            document.getElementById('prestamo_fecha_primer_pago').value = fechaPorDefectoPrimerPago();
             document.getElementById('prestamo_codigo_bp').value = '';
             document.getElementById('lbl_prestamo_cli_nombre').innerText = 'Ninguno seleccionado';
             document.getElementById('lbl_prestamo_cli_bp').innerText = 'BP000';
@@ -697,7 +719,8 @@ try {
                 total_credito: datosCalculadosPrestamo.totalConInteres,
                 numero_cuotas: datosCalculadosPrestamo.numeroCuotas,
                 plazo_meses: datosCalculadosPrestamo.numeroCuotas,
-                frecuencia: datosCalculadosPrestamo.frecuencia
+                frecuencia: datosCalculadosPrestamo.frecuencia,
+                fecha_primer_pago: document.getElementById('prestamo_fecha_primer_pago').value || fechaPorDefectoPrimerPago()
             };
 
             try {
