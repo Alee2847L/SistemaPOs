@@ -182,26 +182,31 @@ function enviarComprobanteVentaPorCorreo(PDO $pdo, int $ventaId, ?int $contratoI
         $empresa = nombreEmpresaParaCorreo($pdo);
         $nombreCliente = $venta['cliente_nombre_real'] ?? $venta['cliente_nombre'] ?? 'cliente';
         $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+        $L = fn($n) => 'L. ' . number_format((float)$n, 2);
 
-        $htmlFactura = construirHtmlFactura($venta, $detalles, $empresa);
-        $htmlPlan    = $contratoId ? construirHtmlPlanPagos($pdo, $contratoId) : null;
-
+        // El detalle completo (factura + plan de pagos) ya no va en el cuerpo del correo:
+        // se genera como PDF adjunto (ver más abajo) para que el cliente lo pueda
+        // descargar/imprimir/guardar como documento.
         cargarEnvParaCorreo();
         $enlacePortal = '';
-        if ($htmlPlan && !empty($_ENV['PORTAL_URL'])) {
+        if ($contratoId && !empty($_ENV['PORTAL_URL'])) {
             $enlacePortal = "<p>Puedes consultar tus cuotas y recibos en el
                 <a href='{$h($_ENV['PORTAL_URL'])}'>portal de clientes</a>.</p>";
         }
 
+        $numeroCorto = $venta['numero_factura'] ?: ('#' . $venta['id_transaccion']);
         $body = "
         <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
             <p>Hola <strong>{$h($nombreCliente)}</strong>,</p>
-            <p>Gracias por tu compra en <strong>{$h($empresa)}</strong>. Este es tu comprobante:</p>
-            {$htmlFactura}
-            " . ($htmlPlan ?? '') . "
+            <p>Gracias por tu compra en <strong>{$h($empresa)}</strong>.</p>
+            <div style='background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:16px 0;'>
+                <p style='margin:4px 0;'><strong>Comprobante:</strong> {$h($numeroCorto)}</p>
+                <p style='margin:4px 0;'><strong>Total:</strong> {$L($venta['total'] ?? 0)}</p>
+            </div>
+            <p>Tu factura" . ($contratoId ? ' y el plan de pagos vienen adjuntos' : ' viene adjunta') . " en este correo, en formato PDF.</p>
             {$enlacePortal}
             <hr style='border:none; border-top:1px solid #e2e8f0; margin:24px 0;'>
-            <p style='font-size:12px; color:#64748b;'>Este es un mensaje automático de <strong>{$h($empresa)}</strong>. Conserva tu comprobante impreso como respaldo fiscal.</p>
+            <p style='font-size:12px; color:#64748b;'>Este es un mensaje automático de <strong>{$h($empresa)}</strong>. Conserva tu comprobante como respaldo fiscal.</p>
         </div>";
 
         // 3. Envío (mismo SMTP que los recordatorios y el plan de pagos)
@@ -225,12 +230,23 @@ function enviarComprobanteVentaPorCorreo(PDO $pdo, int $ventaId, ?int $contratoI
 
             $mail->isHTML(true);
             $numero = $venta['numero_factura'] ?: ('#' . $venta['id_transaccion']);
-            $mail->Subject = $htmlPlan
+            $mail->Subject = $contratoId
                 ? "Comprobante y plan de pagos {$numero} - {$empresa}"
                 : "Comprobante de compra {$numero} - {$empresa}";
             $mail->Body    = $body;
             $mail->AltBody = "Gracias por tu compra en {$empresa}. Comprobante: {$numero}, total: "
                            . number_format((float)$venta['total'], 2) . " Lempiras.";
+
+            // Adjuntar la factura (y plan de pagos si aplica) como PDF.
+            require_once __DIR__ . '/generar_pdf_factura.php';
+            $pdfFactura = generarPdfFactura($pdo, $ventaId, $contratoId);
+            if ($pdfFactura !== null) {
+                $nombreArchivoPdf = 'Factura_' . preg_replace('/[^A-Za-z0-9_-]/', '', (string)$numero) . '.pdf';
+                $mail->addStringAttachment($pdfFactura, $nombreArchivoPdf, 'base64', 'application/pdf');
+            } else {
+                error_log("[comprobante_venta] Venta #{$ventaId}: no se pudo generar el PDF adjunto, se envía solo el correo.");
+            }
+
             $mail->send();
             return true;
         } catch (Throwable $e) {
