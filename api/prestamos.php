@@ -179,6 +179,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fechaPrimerPago = new DateTime('+15 days');
     }
 
+    // La fecha del primer pago no puede elegirse a más de 40 días desde hoy.
+    $fechaMaximaPrimerPago = new DateTime('+40 days');
+    if ($fechaPrimerPago > $fechaMaximaPrimerPago) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'La fecha del primer pago no puede ser mayor a 40 días desde hoy (máximo: ' . $fechaMaximaPrimerPago->format('Y-m-d') . ').'
+        ]);
+        exit;
+    }
+
     if (empty($codigo_bp) || $monto_financiar <= 0) {
         echo json_encode(['success' => false, 'message' => 'Datos incompletos o inválidos.']);
         exit;

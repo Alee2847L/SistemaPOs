@@ -221,8 +221,8 @@ try {
 
                 <div>
                     <label class="block font-semibold text-xs text-slate-700 mb-1">Fecha del Primer Pago:</label>
-                    <input type="date" id="prestamo_fecha_primer_pago" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition">
-                    <p class="text-[11px] text-slate-400 mt-1">Por defecto, 15 días después de hoy. Puedes elegir otra fecha si lo necesitas.</p>
+                    <input type="date" id="prestamo_fecha_primer_pago" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition" oninput="validarFechaPrimerPago()">
+                    <p class="text-[11px] text-slate-400 mt-1">Por defecto, 15 días después de hoy. Puedes elegir otra fecha, hasta un máximo de 40 días.</p>
                 </div>
 
                 <div class="bg-purple-50 border border-purple-200 p-4 rounded-xl space-y-2">
@@ -592,15 +592,41 @@ try {
             };
         }
 
+        // Formatea una fecha en 'YYYY-MM-DD' usando la fecha LOCAL del navegador
+        // (evita el corrimiento de un día que da toISOString() al convertir a UTC).
+        function formatearFechaISO(d) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
         function fechaPorDefectoPrimerPago() {
             const f = new Date();
             f.setDate(f.getDate() + 15);
-            return f.toISOString().split('T')[0];
+            return formatearFechaISO(f);
+        }
+
+        // La fecha del primer pago no puede elegirse a más de 40 días desde hoy.
+        function fechaMaximaPrimerPago() {
+            const f = new Date();
+            f.setDate(f.getDate() + 40);
+            return formatearFechaISO(f);
+        }
+
+        function validarFechaPrimerPago() {
+            const input = document.getElementById('prestamo_fecha_primer_pago');
+            const maximo = fechaMaximaPrimerPago();
+            if (input.value && input.value > maximo) {
+                alert(`⚠️ La fecha del primer pago no puede ser mayor a 40 días desde hoy (máximo: ${maximo}).`);
+                input.value = maximo;
+            }
         }
 
         function abrirModalNuevoPrestamo() {
             document.getElementById('formNuevoPrestamo').reset();
             document.getElementById('prestamo_fecha_primer_pago').value = fechaPorDefectoPrimerPago();
+            document.getElementById('prestamo_fecha_primer_pago').max = fechaMaximaPrimerPago();
             document.getElementById('prestamo_codigo_bp').value = '';
             document.getElementById('lbl_prestamo_cli_nombre').innerText = 'Ninguno seleccionado';
             document.getElementById('lbl_prestamo_cli_bp').innerText = 'BP000';
@@ -723,6 +749,12 @@ try {
             const codigoBp = document.getElementById('prestamo_codigo_bp').value;
             if (!codigoBp || codigoBp === '') {
                 alert('Debe seleccionar un cliente válido de la base de datos.');
+                return;
+            }
+
+            const fechaPrimerPagoElegida = document.getElementById('prestamo_fecha_primer_pago').value || fechaPorDefectoPrimerPago();
+            if (fechaPrimerPagoElegida > fechaMaximaPrimerPago()) {
+                alert(`⚠️ La fecha del primer pago no puede ser mayor a 40 días desde hoy (máximo: ${fechaMaximaPrimerPago()}).`);
                 return;
             }
 
