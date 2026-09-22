@@ -181,13 +181,16 @@ $ventas = $stmt;
                             $hayResultados = true;
                             $totalVenta = (float)$v['total'];
                             $esDevolucion = ($totalVenta < 0);
-                            $esOrdenPendiente = !$esDevolucion && (empty($v['numero_factura']) || $v['tipo_comprobante'] === 'Orden Pendiente');
+                            $esPrimaPrestamo = ($v['tipo_comprobante'] === 'Prima de Préstamo');
+                            $esOrdenPendiente = !$esDevolucion && !$esPrimaPrestamo && (empty($v['numero_factura']) || $v['tipo_comprobante'] === 'Orden Pendiente');
                         ?>
                         <tr class="hover:bg-slate-50/50 transition border-b border-slate-100 last:border-none">
                             <td class="px-6 py-4 font-bold text-slate-900">
                                 #<?php echo htmlspecialchars($v['id_transaccion']); ?>
                                 <?php if($esDevolucion): ?>
                                     <span class="block text-[10px] text-red-600 font-semibold uppercase">Devolución</span>
+                                <?php elseif($esPrimaPrestamo): ?>
+                                    <span class="block text-[10px] text-violet-600 font-semibold uppercase">Prima de Préstamo</span>
                                 <?php elseif($esOrdenPendiente): ?>
                                     <span class="block text-[10px] text-amber-600 font-semibold uppercase">Orden Pendiente</span>
                                 <?php else: ?>
@@ -198,6 +201,10 @@ $ventas = $stmt;
                                 <?php if($esDevolucion): ?>
                                     <span class="bg-red-50 text-red-700 border border-red-200 text-xs font-semibold px-2.5 py-1 rounded-lg">
                                         N/A (Devolución)
+                                    </span>
+                                <?php elseif($esPrimaPrestamo): ?>
+                                    <span class="bg-violet-50 text-violet-700 border border-violet-200 text-xs font-semibold px-2.5 py-1 rounded-lg">
+                                        Recibo interno
                                     </span>
                                 <?php elseif($esOrdenPendiente): ?>
                                     <span class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-2.5 py-1 rounded-lg">
@@ -229,6 +236,8 @@ $ventas = $stmt;
                                     <a href="imprimir_factura.php?id_transaccion=<?php echo $v['id_transaccion']; ?>" target="_blank" class="inline-flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-medium text-xs px-3.5 py-2 rounded-xl transition shadow-xs">
                                         <i class="fa-solid fa-file-invoice text-xs"></i> Ver Devolución
                                     </a>
+                                <?php elseif($esPrimaPrestamo): ?>
+                                    <span class="text-slate-400 text-xs italic">— Sin acciones —</span>
                                 <?php elseif($esOrdenPendiente): ?>
                                     <!-- AQUÍ ESTÁ EL CAMBIO: Dos botones -->
                                     <div class="flex flex-col gap-1.5 items-center">
