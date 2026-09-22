@@ -137,6 +137,8 @@ document.getElementById('btnVolver').addEventListener('click', () => {
             </div>
         </div>
 
+        <div id="bannerMoraDetalle" class="hidden mb-4 p-3 bg-rose-50 border border-rose-300 rounded-lg text-xs text-rose-700 font-semibold"></div>
+
         <div class="grid grid-cols-2 gap-3 mb-4 text-sm">
             <div class="bg-emerald-50 rounded-lg p-3"><span class="text-slate-500">Total pagado</span><div id="resPagado" class="font-bold text-emerald-700 text-lg"></div></div>
             <div class="bg-amber-50 rounded-lg p-3"><span class="text-slate-500">Saldo pendiente</span><div id="resPendiente" class="font-bold text-amber-700 text-lg"></div></div>
@@ -173,10 +175,11 @@ async function cargarContratos() {
         return;
     }
     cont.innerHTML = r.contratos.map(c => `
-        <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="bg-white rounded-xl border ${c.en_mora ? 'border-rose-300' : 'border-slate-200'} p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
                 <div class="font-semibold">Contrato #${esc(c.id)} — ${esc(c.producto_descripcion)}</div>
                 <div class="text-sm text-slate-500 flex items-center gap-1.5 flex-wrap">${esc(c.cuotas_pagadas)} de ${esc(c.numero_cuotas)} cuotas pagadas · Total ${money(c.total_credito)} · ${badgeEstado(c.estado)}</div>
+                ${c.en_mora ? `<div class="text-xs text-rose-600 font-semibold mt-1"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(c.cuotas_en_mora)} cuota(s) en mora · hasta ${esc(c.dias_mora_max)} día(s) de atraso</div>` : ''}
             </div>
             <button onclick="verCuotas(${Number(c.id)})" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">Ver cuotas</button>
         </div>`).join('');
@@ -196,9 +199,21 @@ function badgeEstado(estado) {
         PAGADO:    'bg-emerald-100 text-emerald-700',
         VENCIDO:   'bg-red-100 text-red-700',
         PENDIENTE: 'bg-amber-100 text-amber-700',
-        ANULADO:   'bg-slate-200 text-slate-600'
+        ANULADO:   'bg-slate-200 text-slate-600',
+        'EN MORA': 'bg-rose-100 text-rose-700'
     };
     return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${estilos[estado] || 'bg-slate-100 text-slate-600'}">${esc(estado)}</span>`;
+}
+
+// Badge de una cuota individual: igual que badgeEstado, pero si está en mora
+// añade la cantidad de días de atraso (0 días = venció hoy).
+function badgeCuota(q) {
+    if (q.estado === 'EN MORA') {
+        const dias = Number(q.dias_mora) || 0;
+        const texto = dias === 0 ? 'EN MORA (hoy)' : `EN MORA (${dias} día${dias === 1 ? '' : 's'})`;
+        return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">${esc(texto)}</span>`;
+    }
+    return badgeEstado(q.estado);
 }
 
 async function verCuotas(id) {
@@ -212,13 +227,22 @@ async function verCuotas(id) {
         `Financiado: ${money(c.monto_financiar)} · Interés: ${Number(c.porcentaje_interes)}%`;
     document.getElementById('resPagado').textContent = money(r.resumen.pagado);
     document.getElementById('resPendiente').textContent = money(r.resumen.pendiente);
+
+    const bannerMora = document.getElementById('bannerMoraDetalle');
+    if (r.resumen.cuotas_en_mora > 0) {
+        bannerMora.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1.5"></i>Tienes ${r.resumen.cuotas_en_mora} cuota(s) en mora, con hasta ${r.resumen.dias_mora_max} día(s) de atraso. Ponte al día para seguir con tu crédito al corriente.`;
+        bannerMora.classList.remove('hidden');
+    } else {
+        bannerMora.classList.add('hidden');
+    }
+
     document.getElementById('tablaCuotas').innerHTML = r.cuotas.map(q => `
-        <tr class="border-b border-slate-100">
+        <tr class="border-b border-slate-100 ${q.estado === 'EN MORA' ? 'bg-rose-50/60' : ''}">
             <td class="p-2 font-bold">${esc(q.numero_cuota)}</td>
-            <td class="p-2">${esc(q.fecha_vencimiento)}</td>
+            <td class="p-2 ${q.estado === 'EN MORA' ? 'text-rose-700 font-semibold' : ''}">${esc(q.fecha_vencimiento)}</td>
             <td class="p-2 text-right">${money(q.monto_cuota)}</td>
             <td class="p-2 text-slate-500">${q.fecha_pago ? esc(String(q.fecha_pago).substring(0, 10)) : '—'}</td>
-            <td class="p-2 text-center">${badgeEstado(q.estado)}</td>
+            <td class="p-2 text-center">${badgeCuota(q)}</td>
             <td class="p-2 text-center no-print">${botonRecibo(q)}</td>
         </tr>`).join('');
     const det = document.getElementById('detalle');

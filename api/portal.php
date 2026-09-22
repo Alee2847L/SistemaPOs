@@ -55,7 +55,9 @@ if ($accion === 'mis_contratos') {
         "SELECT c.id, c.producto_descripcion, c.total_credito, c.plazo_meses,
                 c.fecha_inicio, c.estado,
                 (SELECT COUNT(*) FROM cuotas_contrato q WHERE q.contrato_id = c.id) AS numero_cuotas,
-                (SELECT COUNT(*) FROM cuotas_contrato q WHERE q.contrato_id = c.id AND q.estado = 'PAGADO') AS cuotas_pagadas
+                (SELECT COUNT(*) FROM cuotas_contrato q WHERE q.contrato_id = c.id AND q.estado = 'PAGADO') AS cuotas_pagadas,
+                (SELECT COUNT(*) FROM cuotas_contrato q WHERE q.contrato_id = c.id AND q.estado = 'PENDIENTE' AND q.fecha_vencimiento <= CURDATE()) AS cuotas_en_mora,
+                (SELECT COALESCE(MAX(DATEDIFF(CURDATE(), q.fecha_vencimiento)), 0) FROM cuotas_contrato q WHERE q.contrato_id = c.id AND q.estado = 'PENDIENTE' AND q.fecha_vencimiento <= CURDATE()) AS dias_mora_max
            FROM contratos c
           WHERE c.codigo_bp = ?
           ORDER BY c.id DESC"
@@ -65,10 +67,14 @@ if ($accion === 'mis_contratos') {
 
     // Al cliente se le muestra "ANULADO" en vez de "CANCELADO" (nombre interno que
     // usa el sistema cuando un administrador anula un préstamo dentro del plazo).
+    // Un contrato anulado no está "en mora": ya no se le va a cobrar.
     foreach ($contratos as &$c) {
         if ($c['estado'] === 'CANCELADO') {
             $c['estado'] = 'ANULADO';
+            $c['cuotas_en_mora'] = 0;
+            $c['dias_mora_max'] = 0;
         }
+        $c['en_mora'] = ((int)$c['cuotas_en_mora']) > 0;
     }
     unset($c);
 
@@ -95,21 +101,33 @@ if ($accion === 'ver_cuotas') {
     $cuotas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $contratoAnulado = ($contrato['estado'] === 'CANCELADO');
+    $hoy = date('Y-m-d');
 
-    $pagado = 0.0; $pendiente = 0.0;
+    $pagado = 0.0; $pendiente = 0.0; $cuotasEnMora = 0; $diasMoraMax = 0;
     foreach ($cuotas as &$q) {
         $cuota = (float)$q['monto_cuota'];
         $abono = (float)$q['monto_pagado'];
+        $q['dias_mora'] = 0;
+
         if ($q['estado'] === 'PAGADO') {
             $pagado += $abono > 0 ? $abono : $cuota;   // por si alguna cuota pagada quedó con monto_pagado en 0
         } elseif ($contratoAnulado) {
             // El contrato fue anulado: las cuotas que seguían PENDIENTE ya no se
             // cobrarán, así que al cliente se le muestran como ANULADO, no como
-            // si todavía debiera pagarlas.
+            // si todavía debiera pagarlas (y no se cuentan como mora).
             $q['estado'] = 'ANULADO';
         } else {
             $pagado    += $abono;                       // abonos parciales
             $pendiente += max($cuota - $abono, 0);
+
+            // En mora: sigue PENDIENTE y su fecha de vencimiento ya pasó (o es hoy).
+            if ($q['fecha_vencimiento'] <= $hoy) {
+                $dias = (new DateTime($q['fecha_vencimiento']))->diff(new DateTime($hoy))->days;
+                $q['estado']    = 'EN MORA';
+                $q['dias_mora'] = $dias;
+                $cuotasEnMora++;
+                if ($dias > $diasMoraMax) $diasMoraMax = $dias;
+            }
         }
     }
     unset($q);
@@ -122,7 +140,12 @@ if ($accion === 'ver_cuotas') {
     responder(true, 'OK', [
         'contrato' => $contrato,
         'cuotas'   => $cuotas,
-        'resumen'  => ['pagado' => $pagado, 'pendiente' => $pendiente],
+        'resumen'  => [
+            'pagado'         => $pagado,
+            'pendiente'      => $pendiente,
+            'cuotas_en_mora' => $cuotasEnMora,
+            'dias_mora_max'  => $diasMoraMax,
+        ],
     ]);
 }
 
