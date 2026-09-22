@@ -38,8 +38,31 @@ $id_transaccion = isset($data['id_transaccion']) ? intval($data['id_transaccion'
 $esCotizacion = !empty($data['es_cotizacion']) ? true : false; 
 $esPendiente = (isset($data['estado']) && $data['estado'] === 'pendiente') ? true : false;
 
-$tipo_comprobante = $esCotizacion ? 'Cotización' : ($esPendiente ? 'Orden Pendiente' : trim($data['tipo_comprobante'] ?? 'Factura'));
 $carrito = $data['carrito'];
+
+// Detectar si el carrito corresponde al cobro de una prima de préstamo pendiente
+// (banner "Cobrar Prima" en pos.php, ver verificar_prima_pendiente en prestamos.php).
+// Estas ventas son un "recibo interno": no consumen numeración fiscal SAR y no
+// afectan inventario, así que no se pueden mezclar con productos normales.
+$itemsPrimaPrestamo = array_values(array_filter($carrito, function ($it) {
+    return !empty($it['es_prima_prestamo']);
+}));
+$esPrimaPrestamo = count($itemsPrimaPrestamo) > 0;
+
+if ($esPrimaPrestamo && count($itemsPrimaPrestamo) < count($carrito)) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'No se puede combinar el cobro de una prima de préstamo con otros productos en la misma venta. Procésalos en ventas separadas.'
+    ]);
+    exit;
+}
+
+$tipo_comprobante = $esCotizacion
+    ? 'Cotización'
+    : ($esPendiente
+        ? 'Orden Pendiente'
+        : ($esPrimaPrestamo ? 'Prima de Préstamo' : trim($data['tipo_comprobante'] ?? 'Factura')));
+
 $pagos = $data['pagos'] ?? [];
 $ahorro_total = floatval($data['ahorro_total'] ?? 0);
 
@@ -123,8 +146,9 @@ try {
     $numeroFacturaGenerado = null;
     $alertaRango = "";
 
-    // Generar factura solo si NO es cotización ni orden pendiente
-    if (!$esCotizacion && !$esPendiente) {
+    // Generar factura solo si NO es cotización, orden pendiente, ni cobro de prima
+    // (la prima queda como recibo interno, sin numeración fiscal).
+    if (!$esCotizacion && !$esPendiente && !$esPrimaPrestamo) {
         $stmtConf = $pdo->prepare("SELECT prefijo_factura, siguiente_correlativo, rango_maximo FROM configuracion LIMIT 1");
         $stmtConf->execute();
         $config = $stmtConf->fetch(PDO::FETCH_ASSOC);
@@ -266,12 +290,18 @@ try {
     $sqlDet = "INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_unitario, descuento_unitario, subtotal) VALUES (?, ?, ?, ?, ?, ?)";
     $stmtDet = $pdo->prepare($sqlDet);
 
-    if (!$esCotizacion && !$esPendiente) {
+    if (!$esCotizacion && !$esPendiente && !$esPrimaPrestamo) {
         $sqlStock = "UPDATE productos SET stock = GREATEST(0, stock - ?) WHERE id = ?";
         $stmtStock = $pdo->prepare($sqlStock);
     }
 
     foreach ($carrito as $prod) {
+        // La prima de préstamo es un renglón especial (no es un producto real del
+        // catálogo): no se guarda en detalle_ventas ni descuenta inventario.
+        if (!empty($prod['es_prima_prestamo'])) {
+            continue;
+        }
+
         $cant = intval($prod['cantidad']);
         $precioOrig = floatval($prod['precio']);
         $descUnit = floatval($prod['descuento_unitario'] ?? 0);
@@ -280,7 +310,7 @@ try {
 
         $stmtDet->execute([$ventaId, $prod['id'], $cant, $precioOrig, $descUnit, $subtotal]);
 
-        if (!$esCotizacion && !$esPendiente) {
+        if (!$esCotizacion && !$esPendiente && !$esPrimaPrestamo) {
             $stmtStock->execute([$cant, $prod['id']]);
         }
     }
@@ -304,8 +334,8 @@ try {
         }
     }
 
-    // 7. CREAR CONTRATO SOLO SI ES VENTA DEFINITIVA (NO pendiente ni cotización)
-    if ($esCredito && !$esCotizacion && !$esPendiente) {
+    // 7. CREAR CONTRATO SOLO SI ES VENTA DEFINITIVA (NO pendiente ni cotización ni prima)
+    if ($esCredito && !$esCotizacion && !$esPendiente && !$esPrimaPrestamo) {
         $porcentaje_interes = floatval($data['porcentaje_interes'] ?? 0);
         $fecha_inicio = $data['fecha_inicio'] ?? date('Y-m-d');
         
@@ -375,12 +405,50 @@ try {
         $stmtRestar->execute([$monto_financiar, $codigo_bp]);
     }
 
+    // 7.5 Si esta venta corresponde al cobro de una prima de préstamo pendiente,
+    // vincular la venta al contrato (contratos.prima_venta_id) para que quede
+    // marcada como cobrada, se vea en Arqueo y no se pueda volver a cobrar.
+    // El monto se revalida contra lo guardado en el contrato (no se confía en
+    // lo que mandó el navegador), con tolerancia para no fallar por redondeo.
+    if ($esPrimaPrestamo) {
+        foreach ($itemsPrimaPrestamo as $itemPrima) {
+            $contratoIdPrima = intval($itemPrima['contrato_id'] ?? 0);
+            if ($contratoIdPrima <= 0) {
+                throw new Exception("Falta el contrato de préstamo asociado a la prima que se está cobrando.");
+            }
+
+            $stmtContratoPrima = $pdo->prepare("SELECT id, prima, prima_venta_id, estado FROM contratos WHERE id = ? AND tipo_contrato = 'prestamo' FOR UPDATE");
+            $stmtContratoPrima->execute([$contratoIdPrima]);
+            $contratoPrima = $stmtContratoPrima->fetch(PDO::FETCH_ASSOC);
+
+            if (!$contratoPrima) {
+                throw new Exception("El contrato de préstamo #{$contratoIdPrima} no existe.");
+            }
+            if ($contratoPrima['estado'] !== 'ACTIVO') {
+                throw new Exception("El contrato de préstamo #{$contratoIdPrima} ya no está activo; no se puede cobrar su prima.");
+            }
+            if (!empty($contratoPrima['prima_venta_id'])) {
+                throw new Exception("La prima del contrato #{$contratoIdPrima} ya fue cobrada anteriormente (venta #{$contratoPrima['prima_venta_id']}). Vuelve a seleccionar el cliente para actualizar la información.");
+            }
+
+            $montoEsperado = floatval($contratoPrima['prima']);
+            $montoCobrado = floatval($itemPrima['precio']);
+            if (abs($montoEsperado - $montoCobrado) > 0.01) {
+                throw new Exception("El monto de la prima del contrato #{$contratoIdPrima} cambió (esperado L. " . number_format($montoEsperado, 2) . "). Vuelve a seleccionar el cliente en el POS e intenta de nuevo.");
+            }
+
+            $pdo->prepare("UPDATE contratos SET prima_venta_id = ? WHERE id = ?")->execute([$ventaId, $contratoIdPrima]);
+        }
+    }
+
     $pdo->commit();
 
     if ($esCotizacion) {
         $msgExito = 'Cotización guardada con éxito.';
     } elseif ($esPendiente) {
         $msgExito = $id_transaccion > 0 ? "Orden #{$id_transaccion} actualizada con éxito." : 'Orden pendiente guardada con éxito.';
+    } elseif ($esPrimaPrestamo) {
+        $msgExito = 'Prima de préstamo cobrada con éxito. Queda registrada como recibo interno.';
     } else {
         $msgExito = 'Venta, contrato, cuotas y actualización de límite de crédito registrados con éxito.' . $alertaRango;
     }
@@ -396,7 +464,7 @@ try {
     // Enviar comprobante (y plan de pagos si es crédito) por correo. Solo en venta definitiva,
     // nunca en cotización ni en orden pendiente. La respuesta ya se envió al POS (arriba);
     // si el servidor lo permite (PHP-FPM) se cierra la conexión antes de enviar el correo.
-    if (!$esCotizacion && !$esPendiente) {
+    if (!$esCotizacion && !$esPendiente && !$esPrimaPrestamo) {
         $ventaParaCorreo    = $ventaId;
         $contratoParaCorreo = isset($contrato_id) ? (int)$contrato_id : null;
 

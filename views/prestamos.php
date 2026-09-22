@@ -226,42 +226,8 @@ try {
                     <p class="text-[11px] text-slate-400 mt-1">Por defecto, 15 días después de hoy. Puedes elegir otra fecha, hasta un máximo de 40 días.</p>
                 </div>
 
-                <div id="seccion_pago_prima" class="hidden bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
-                    <h5 class="text-xs font-bold text-purple-600 uppercase tracking-wider flex items-center gap-1.5">
-                        <i class="fa-solid fa-hand-holding-dollar"></i> ¿Cómo pagó la prima el cliente?
-                    </h5>
-                    <p class="text-[11px] text-slate-500 -mt-2">Este dinero sí entra a caja — se registrará en Arqueo/Transacciones del día.</p>
-
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">Método:</label>
-                            <select id="prima_metodo_pago" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition" onchange="cambiarMetodoPagoPrima()">
-                                <option value="efectivo">💵 Efectivo</option>
-                                <option value="tarjeta">💳 Tarjeta</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">Monto (L.):</label>
-                            <input type="number" id="prima_pago_monto_input" step="0.01" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition" placeholder="0.00">
-                        </div>
-                    </div>
-
-                    <div id="prima_seccion_tarjeta" class="hidden grid grid-cols-3 gap-2">
-                        <input type="text" id="prima_tarjeta_nombre" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition" placeholder="Titular">
-                        <input type="text" id="prima_tarjeta_digitos" maxlength="4" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition" placeholder="Últ. 4 díg.">
-                        <input type="text" id="prima_tarjeta_voucher" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition" placeholder="Voucher/Ref">
-                    </div>
-
-                    <button type="button" class="w-full bg-purple-100 hover:bg-purple-200 text-purple-700 font-semibold text-xs py-2 rounded-xl transition" onclick="agregarPagoPrima()">
-                        <i class="fa-solid fa-plus"></i> Agregar Pago
-                    </button>
-
-                    <div id="prima_lista_pagos" class="text-xs space-y-1"></div>
-                    <div class="flex justify-between text-xs font-semibold pt-2 border-t border-slate-200">
-                        <span>Total registrado:</span>
-                        <span id="prima_total_registrado" class="text-purple-700">L. 0.00</span>
-                    </div>
-                    <p id="prima_aviso_incompleto" class="hidden text-[11px] text-rose-600 font-semibold">⚠️ Lo registrado debe sumar exactamente el monto de la prima antes de guardar.</p>
+                <div id="aviso_prima_pendiente" class="hidden bg-violet-50 border border-violet-200 p-3 rounded-xl text-xs text-violet-700">
+                    <i class="fa-solid fa-circle-info"></i> Esta prima quedará <b>pendiente de cobro</b>: se cobra después en el POS, buscando a este cliente, como una venta normal (efectivo/tarjeta).
                 </div>
 
                 <div class="bg-purple-50 border border-purple-200 p-4 rounded-xl space-y-2">
@@ -353,7 +319,6 @@ try {
         let listaPrestamosOriginal = [];
         let timeoutClientePrestamo = null;
         let datosCalculadosPrestamo = null;
-        let listaPagosPrima = [];
 
         document.addEventListener('DOMContentLoaded', () => {
             actualizarOpcionesPlazo();
@@ -632,78 +597,8 @@ try {
                 prima
             };
 
-            // Mostrar/ocultar la sección de "¿cómo pagó la prima?" según haya prima o no.
-            const seccionPrima = document.getElementById('seccion_pago_prima');
-            if (prima > 0) {
-                seccionPrima.classList.remove('hidden');
-            } else {
-                seccionPrima.classList.add('hidden');
-                listaPagosPrima = [];
-                renderizarPagosPrima();
-            }
-        }
-
-        // --- PAGO DE LA PRIMA (efectivo/tarjeta, se puede dividir) ---
-        function cambiarMetodoPagoPrima() {
-            const metodo = document.getElementById('prima_metodo_pago').value;
-            document.getElementById('prima_seccion_tarjeta').classList.toggle('hidden', metodo !== 'tarjeta');
-        }
-
-        function agregarPagoPrima() {
-            const monto = parseFloat(document.getElementById('prima_pago_monto_input').value);
-            if (isNaN(monto) || monto <= 0) {
-                alert('Ingresa un monto válido.');
-                return;
-            }
-            const metodo = document.getElementById('prima_metodo_pago').value;
-            let detalle = 'Efectivo';
-            let tarjetaInfo = null;
-
-            if (metodo === 'tarjeta') {
-                const nombre = document.getElementById('prima_tarjeta_nombre').value.trim();
-                const digitos = document.getElementById('prima_tarjeta_digitos').value.trim();
-                const voucher = document.getElementById('prima_tarjeta_voucher').value.trim();
-                if (!nombre || !digitos || !voucher) {
-                    alert('Completa Titular, últimos 4 dígitos y Voucher de la tarjeta.');
-                    return;
-                }
-                detalle = `Tarjeta (****${digitos} - V: ${voucher})`;
-                tarjetaInfo = { titular: nombre, digitos, voucher };
-            }
-
-            listaPagosPrima.push({ metodo, monto, detalle, detalles_tarjeta: tarjetaInfo });
-
-            document.getElementById('prima_pago_monto_input').value = '';
-            document.getElementById('prima_tarjeta_nombre').value = '';
-            document.getElementById('prima_tarjeta_digitos').value = '';
-            document.getElementById('prima_tarjeta_voucher').value = '';
-
-            renderizarPagosPrima();
-        }
-
-        function eliminarPagoPrima(index) {
-            listaPagosPrima.splice(index, 1);
-            renderizarPagosPrima();
-        }
-
-        function renderizarPagosPrima() {
-            const cont = document.getElementById('prima_lista_pagos');
-            const totalRegistrado = listaPagosPrima.reduce((s, p) => s + p.monto, 0);
-            const primaObjetivo = parseFloat(document.getElementById('prestamo_prima').value) || 0;
-
-            if (listaPagosPrima.length === 0) {
-                cont.innerHTML = '<p class="text-slate-400 text-center py-1">Sin pagos registrados</p>';
-            } else {
-                cont.innerHTML = listaPagosPrima.map((p, i) => `
-                    <div class="flex justify-between items-center bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
-                        <span>${p.metodo === 'tarjeta' ? '💳' : '💵'} ${p.detalle} — L. ${p.monto.toFixed(2)}</span>
-                        <button type="button" class="text-rose-500 hover:text-rose-700" onclick="eliminarPagoPrima(${i})"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                `).join('');
-            }
-
-            document.getElementById('prima_total_registrado').innerText = 'L. ' + totalRegistrado.toFixed(2);
-            document.getElementById('prima_aviso_incompleto').classList.toggle('hidden', Math.abs(totalRegistrado - primaObjetivo) < 0.01);
+            // Mostrar/ocultar el aviso de "esto queda pendiente de cobro en POS".
+            document.getElementById('aviso_prima_pendiente').classList.toggle('hidden', prima <= 0);
         }
 
         // Formatea una fecha en 'YYYY-MM-DD' usando la fecha LOCAL del navegador
@@ -750,12 +645,7 @@ try {
             btnSubmit.disabled = false;
             btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
 
-            // Resetear el pago de la prima
-            listaPagosPrima = [];
-            document.getElementById('seccion_pago_prima').classList.add('hidden');
-            document.getElementById('prima_metodo_pago').value = 'efectivo';
-            document.getElementById('prima_seccion_tarjeta').classList.add('hidden');
-            renderizarPagosPrima();
+            document.getElementById('aviso_prima_pendiente').classList.add('hidden');
 
             actualizarOpcionesPlazo();
             document.getElementById('modalNuevoPrestamo').classList.remove('hidden');
@@ -893,19 +783,6 @@ try {
                 return;
             }
 
-            // Si hay prima, el desglose de pagos (efectivo/tarjeta) debe cuadrar exacto.
-            if (datosCalculadosPrestamo.prima > 0) {
-                const totalRegistradoPrima = listaPagosPrima.reduce((s, p) => s + p.monto, 0);
-                if (listaPagosPrima.length === 0) {
-                    alert('⚠️ Debes registrar cómo pagó el cliente la prima (efectivo/tarjeta) antes de guardar.');
-                    return;
-                }
-                if (Math.abs(totalRegistradoPrima - datosCalculadosPrestamo.prima) >= 0.01) {
-                    alert(`⚠️ Lo registrado en el pago de la prima (L. ${totalRegistradoPrima.toFixed(2)}) debe sumar exactamente L. ${datosCalculadosPrestamo.prima.toFixed(2)}.`);
-                    return;
-                }
-            }
-
             const payload = {
                 codigo_bp: codigoBp,
                 producto_descripcion: document.getElementById('prestamo_descripcion').value.trim(),
@@ -917,8 +794,7 @@ try {
                 numero_cuotas: datosCalculadosPrestamo.numeroCuotas,
                 plazo_meses: datosCalculadosPrestamo.numeroCuotas,
                 frecuencia: datosCalculadosPrestamo.frecuencia,
-                fecha_primer_pago: document.getElementById('prestamo_fecha_primer_pago').value || fechaPorDefectoPrimerPago(),
-                pagos_prima: datosCalculadosPrestamo.prima > 0 ? listaPagosPrima : []
+                fecha_primer_pago: document.getElementById('prestamo_fecha_primer_pago').value || fechaPorDefectoPrimerPago()
             };
 
             try {

@@ -96,11 +96,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $adminId
         ]);
 
+        // 8. Si la prima de este contrato ya se había cobrado en POS
+        // (contratos.prima_venta_id apunta a esa venta), revertirla: se crea una
+        // venta espejo con los montos en negativo. Al tener total < 0 queda
+        // clasificada automáticamente como "Devolución" (misma convención que usan
+        // transacciones.php y arqueo.php: $esDevolucion = total < 0), por lo que se
+        // resta sola del Arqueo de caja sin necesidad de una columna de estado nueva.
+        $primaRevertida = false;
+        $primaVentaId = intval($contrato['prima_venta_id'] ?? 0);
+        if ($primaVentaId > 0) {
+            $stmtVentaPrima = $pdo->prepare("SELECT * FROM ventas WHERE id_transaccion = ? LIMIT 1");
+            $stmtVentaPrima->execute([$primaVentaId]);
+            $ventaPrima = $stmtVentaPrima->fetch(PDO::FETCH_ASSOC);
+
+            if ($ventaPrima) {
+                $sqlReversaPrima = "INSERT INTO ventas (
+                                        numero_factura, usuario_id, cliente_codigo_bp, cliente_identidad,
+                                        cliente_nombre, cliente_rtn, tipo_comprobante, total,
+                                        ahorro_total, metodo_pago, monto_efectivo, monto_tarjeta,
+                                        monto_abonado, monto_recibido, cambio_entregado, fecha_venta
+                                    ) VALUES (
+                                        NULL, ?, ?, ?,
+                                        ?, ?, 'Prima de Préstamo (Anulada)', ?,
+                                        0, ?, ?, ?,
+                                        ?, ?, 0, NOW()
+                                    )";
+                $stmtReversaPrima = $pdo->prepare($sqlReversaPrima);
+                $stmtReversaPrima->execute([
+                    $adminId,
+                    $ventaPrima['cliente_codigo_bp'],
+                    $ventaPrima['cliente_identidad'],
+                    $ventaPrima['cliente_nombre'],
+                    $ventaPrima['cliente_rtn'],
+                    -abs(floatval($ventaPrima['total'])),
+                    $ventaPrima['metodo_pago'],
+                    -abs(floatval($ventaPrima['monto_efectivo'])),
+                    -abs(floatval($ventaPrima['monto_tarjeta'])),
+                    -abs(floatval($ventaPrima['monto_abonado'] ?? $ventaPrima['total'])),
+                    -abs(floatval($ventaPrima['monto_recibido'] ?? 0))
+                ]);
+                $primaRevertida = true;
+            }
+        }
+
         $pdo->commit();
 
         $mensajeExito = "Contrato #{$contratoId} anulado con éxito.";
         if ($montoARestaurar > 0) {
             $mensajeExito .= " Se restituyeron L. " . number_format($montoARestaurar, 2) . " al límite de crédito del cliente.";
+        }
+        if ($primaRevertida) {
+            $mensajeExito .= " Se anuló la prima cobrada y se restó del Arqueo de caja.";
         }
 
         header("Location: ../views/anular_prestamo.php?msg=" . urlencode($mensajeExito));

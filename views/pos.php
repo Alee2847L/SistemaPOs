@@ -118,6 +118,16 @@ try {
                 </div>
                 <input type="hidden" id="pos_cliente_bp_seleccionado" value="BP000">
                 <input type="hidden" id="pos_cliente_rtn_seleccionado" value="0000000000000">
+
+                <div id="aviso_prima_pendiente_pos" class="hidden mt-3 p-3 bg-violet-50 border border-violet-200 rounded-xl flex items-center justify-between gap-3 text-xs sm:text-sm">
+                    <span class="text-violet-700">
+                        <i class="fa-solid fa-circle-info mr-1"></i>
+                        Este cliente tiene una <b>prima de préstamo pendiente de cobro</b>: L. <b id="lbl_monto_prima_pendiente_pos">0.00</b>
+                    </span>
+                    <button type="button" id="btn_cobrar_prima_pendiente_pos" class="bg-violet-600 hover:bg-violet-700 text-white font-medium text-xs px-3 py-1.5 rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5" onclick="agregarPrimaPendienteAlCarrito()">
+                        <i class="fa-solid fa-cart-plus text-xs"></i> Cobrar Prima
+                    </button>
+                </div>
             </div>
 
             <!-- Buscador de Productos -->
@@ -543,19 +553,43 @@ try {
             }, 200);
         }
 
+        let primaPendienteActual = null; // { contrato_id, monto } de la prima pendiente del cliente seleccionado, o null
+
         function seleccionarClientePOS(codigo_bp, rtn_dni, nombre, estadoCliente = 'ACT', limiteCredito = 0) {
             document.getElementById('pos_cliente_bp_seleccionado').value = codigo_bp;
             document.getElementById('pos_cliente_rtn_seleccionado').value = rtn_dni || '0000000000000';
             document.getElementById('lbl_cliente_nombre').innerText = nombre;
             document.getElementById('lbl_cliente_bp').innerText = codigo_bp;
             document.getElementById('lbl_cliente_rtn').innerText = rtn_dni || '0000000000000';
-            
+
             // Asignar el límite de crédito real del cliente
             limiteDisponibleCliente = parseFloat(limiteCredito) || 0;
-            
+
             document.getElementById('pos_input_cliente').value = '';
             const divSugerencias = document.getElementById('pos_sugerencias_cliente');
             if(divSugerencias) divSugerencias.classList.add('hidden');
+
+            // Reiniciar el aviso de prima pendiente; se vuelve a consultar para este cliente.
+            primaPendienteActual = null;
+            document.getElementById('aviso_prima_pendiente_pos').classList.add('hidden');
+            if (codigo_bp && codigo_bp !== 'BP000') {
+                fetch(`../api/prestamos.php?accion=verificar_prima_pendiente&codigo_bp=${encodeURIComponent(codigo_bp)}`)
+                    .then(res => res.json())
+                    .then(resPrima => {
+                        // Si mientras tanto se seleccionó otro cliente, ignorar esta respuesta.
+                        if (document.getElementById('pos_cliente_bp_seleccionado').value !== codigo_bp) return;
+                        if (resPrima.success && resPrima.tiene_prima_pendiente) {
+                            // Si esa prima ya está en el carrito, no mostrar el aviso de nuevo.
+                            const yaEnCarrito = carrito.some(item => item.es_prima_prestamo && item.contrato_id === resPrima.contrato_id);
+                            if (!yaEnCarrito) {
+                                primaPendienteActual = { contrato_id: resPrima.contrato_id, monto: parseFloat(resPrima.monto) || 0 };
+                                document.getElementById('lbl_monto_prima_pendiente_pos').innerText = primaPendienteActual.monto.toFixed(2);
+                                document.getElementById('aviso_prima_pendiente_pos').classList.remove('hidden');
+                            }
+                        }
+                    })
+                    .catch(() => { /* si falla la verificación, simplemente no se muestra el aviso */ });
+            }
 
             // REGLA: Si el cliente es ACT, primero verificar que no tenga cuotas en
             // mora antes de ofrecer la modalidad de CRÉDITO. Un cliente con cuotas
@@ -603,6 +637,31 @@ try {
 
         function resetearClienteConsumidorFinal() {
             seleccionarClientePOS('BP000', '0000000000000', 'Consumidor Final', 'INA', 0);
+        }
+
+        function agregarPrimaPendienteAlCarrito() {
+            if (!primaPendienteActual) return;
+
+            const idPrima = 'prima_' + primaPendienteActual.contrato_id;
+            if (carrito.some(item => item.id === idPrima)) {
+                alert('Esa prima ya está agregada al carrito.');
+                return;
+            }
+
+            carrito.push({
+                id: idPrima,
+                nombre: 'Prima de Préstamo (Contrato #' + primaPendienteActual.contrato_id + ')',
+                precio: primaPendienteActual.monto,
+                descuento_unitario: 0,
+                cantidad: 1,
+                stock: 1,
+                es_prima_prestamo: true,
+                contrato_id: primaPendienteActual.contrato_id
+            });
+
+            document.getElementById('aviso_prima_pendiente_pos').classList.add('hidden');
+            primaPendienteActual = null;
+            renderizarCarrito();
         }
 
         // --- GESTIÓN DE PRODUCTOS ---
@@ -687,7 +746,7 @@ try {
 
         function cambiarCantidad(id, nuevaCant) {
             const cant = parseInt(nuevaCant);
-            const item = carrito.find(i => i.id === id);
+            const item = carrito.find(i => i.id == id);
             if (item) {
                 if (cant > item.stock) {
                     alert(`El stock máximo disponible es ${item.stock}`);
@@ -703,7 +762,7 @@ try {
 
         // --- GESTIÓN DE DESCUENTO ---
         function abrirModalDescuento(id) {
-            const item = carrito.find(i => i.id === id);
+            const item = carrito.find(i => i.id == id);
             if (!item) return;
 
             productoPendienteDescId = id;
@@ -727,7 +786,7 @@ try {
         }
 
         function validarClaveYAplicarDescuento() {
-            const item = carrito.find(i => i.id === productoPendienteDescId);
+            const item = carrito.find(i => i.id == productoPendienteDescId);
             if (!item) return;
 
             const tipoDesc = document.getElementById('select_tipo_descuento').value;
@@ -784,7 +843,17 @@ try {
         }
 
         function eliminarDelCarrito(id) {
-            carrito = carrito.filter(i => i.id !== id);
+            const itemRemovido = carrito.find(i => i.id == id);
+            carrito = carrito.filter(i => i.id != id);
+
+            // Si se quitó una prima del carrito, volver a ofrecer cobrarla (si sigue
+            // pendiente para el cliente actualmente seleccionado).
+            if (itemRemovido && itemRemovido.es_prima_prestamo) {
+                primaPendienteActual = { contrato_id: itemRemovido.contrato_id, monto: itemRemovido.precio };
+                document.getElementById('lbl_monto_prima_pendiente_pos').innerText = itemRemovido.precio.toFixed(2);
+                document.getElementById('aviso_prima_pendiente_pos').classList.remove('hidden');
+            }
+
             renderizarCarrito();
         }
 
@@ -810,12 +879,37 @@ try {
                 const descUnit = item.descuento_unitario || 0;
                 const precioFinalUnit = Math.max(0, item.precio - descUnit);
                 const subtotalItem = precioFinalUnit * item.cantidad;
-                
+
                 totalConImpuestos += subtotalItem;
                 acumuladoAhorro += (descUnit * item.cantidad);
 
-                const descBadge = descUnit > 0 
-                    ? `<span class="bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold px-2 py-0.5 rounded-lg">-L. ${(descUnit * item.cantidad).toFixed(2)}</span>` 
+                // El id puede ser numérico (producto real) o texto (p.ej. "prima_12"),
+                // así que siempre se pasa entre comillas a los onclick para que sea JS válido.
+                const idJs = `'${item.id}'`;
+
+                if (item.es_prima_prestamo) {
+                    html += `
+                        <tr class="hover:bg-violet-50/50 transition border-b border-slate-100 last:border-none bg-violet-50/30">
+                            <td class="px-4 py-3 font-semibold text-violet-900">
+                                <i class="fa-solid fa-hand-holding-dollar text-violet-500 mr-1"></i> ${escapeHtml(item.nombre)}
+                            </td>
+                            <td class="px-4 py-3"><span class="bg-violet-100 text-violet-700 border border-violet-200 text-xs font-semibold px-2 py-0.5 rounded-lg">Prima</span></td>
+                            <td class="px-4 py-3 text-slate-600">L. ${item.precio.toFixed(2)}</td>
+                            <td class="px-4 py-3 text-center text-slate-400 text-xs italic">— No aplica —</td>
+                            <td class="px-4 py-3 text-center text-slate-700">1</td>
+                            <td class="px-4 py-3 font-bold text-slate-900">L. ${subtotalItem.toFixed(2)}</td>
+                            <td class="px-4 py-3 text-center">
+                                <button class="bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-xs px-2.5 py-1.5 rounded-xl transition shadow-xs" onclick="eliminarDelCarrito(${idJs})">
+                                    <i class="fa-solid fa-trash text-xs"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                const descBadge = descUnit > 0
+                    ? `<span class="bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold px-2 py-0.5 rounded-lg">-L. ${(descUnit * item.cantidad).toFixed(2)}</span>`
                     : `<span class="bg-slate-100 text-slate-600 border border-slate-200 text-xs font-medium px-2 py-0.5 rounded-lg">Sin desc.</span>`;
 
                 html += `
@@ -824,16 +918,16 @@ try {
                         <td class="px-4 py-3"><span class="bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold px-2 py-0.5 rounded-lg">${item.stock} un.</span></td>
                         <td class="px-4 py-3 text-slate-600">L. ${item.precio.toFixed(2)}</td>
                         <td class="px-4 py-3 text-center">
-                            <button type="button" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-medium text-xs px-2.5 py-1.5 rounded-xl transition shadow-xs inline-flex items-center gap-1" onclick="abrirModalDescuento(${item.id})">
+                            <button type="button" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-medium text-xs px-2.5 py-1.5 rounded-xl transition shadow-xs inline-flex items-center gap-1" onclick="abrirModalDescuento(${idJs})">
                                 <i class="fa-solid fa-tag text-xs text-blue-600"></i> ${descBadge}
                             </button>
                         </td>
                         <td class="px-4 py-3 text-center">
-                            <input type="number" class="w-16 bg-slate-50 border border-slate-200 rounded-lg text-center py-1 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition mx-auto" value="${item.cantidad}" min="1" max="${item.stock}" onchange="cambiarCantidad(${item.id}, this.value)">
+                            <input type="number" class="w-16 bg-slate-50 border border-slate-200 rounded-lg text-center py-1 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition mx-auto" value="${item.cantidad}" min="1" max="${item.stock}" onchange="cambiarCantidad(${idJs}, this.value)">
                         </td>
                         <td class="px-4 py-3 font-bold text-slate-900">L. ${subtotalItem.toFixed(2)}</td>
                         <td class="px-4 py-3 text-center">
-                            <button class="bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-xs px-2.5 py-1.5 rounded-xl transition shadow-xs" onclick="eliminarDelCarrito(${item.id})">
+                            <button class="bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-xs px-2.5 py-1.5 rounded-xl transition shadow-xs" onclick="eliminarDelCarrito(${idJs})">
                                 <i class="fa-solid fa-trash text-xs"></i>
                             </button>
                         </td>
