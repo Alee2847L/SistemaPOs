@@ -176,7 +176,7 @@ async function cargarContratos() {
         <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
                 <div class="font-semibold">Contrato #${esc(c.id)} — ${esc(c.producto_descripcion)}</div>
-                <div class="text-sm text-slate-500">${esc(c.cuotas_pagadas)} de ${esc(c.numero_cuotas)} cuotas pagadas · Total ${money(c.total_credito)} · ${esc(c.estado)}</div>
+                <div class="text-sm text-slate-500 flex items-center gap-1.5 flex-wrap">${esc(c.cuotas_pagadas)} de ${esc(c.numero_cuotas)} cuotas pagadas · Total ${money(c.total_credito)} · ${badgeEstado(c.estado)}</div>
             </div>
             <button onclick="verCuotas(${Number(c.id)})" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">Ver cuotas</button>
         </div>`).join('');
@@ -195,7 +195,8 @@ function badgeEstado(estado) {
     const estilos = {
         PAGADO:    'bg-emerald-100 text-emerald-700',
         VENCIDO:   'bg-red-100 text-red-700',
-        PENDIENTE: 'bg-amber-100 text-amber-700'
+        PENDIENTE: 'bg-amber-100 text-amber-700',
+        ANULADO:   'bg-slate-200 text-slate-600'
     };
     return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${estilos[estado] || 'bg-slate-100 text-slate-600'}">${esc(estado)}</span>`;
 }

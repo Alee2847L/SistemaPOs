@@ -61,9 +61,20 @@ if ($accion === 'mis_contratos') {
           ORDER BY c.id DESC"
     );
     $stmt->execute([$codigoBp]);
+    $contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Al cliente se le muestra "ANULADO" en vez de "CANCELADO" (nombre interno que
+    // usa el sistema cuando un administrador anula un préstamo dentro del plazo).
+    foreach ($contratos as &$c) {
+        if ($c['estado'] === 'CANCELADO') {
+            $c['estado'] = 'ANULADO';
+        }
+    }
+    unset($c);
+
     responder(true, 'OK', [
         'cliente'   => $_SESSION['cliente_nombre'] ?? '',
-        'contratos' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+        'contratos' => $contratos,
     ]);
 }
 
@@ -83,16 +94,29 @@ if ($accion === 'ver_cuotas') {
     $stmt->execute([$contratoId]);
     $cuotas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    $contratoAnulado = ($contrato['estado'] === 'CANCELADO');
+
     $pagado = 0.0; $pendiente = 0.0;
-    foreach ($cuotas as $q) {
+    foreach ($cuotas as &$q) {
         $cuota = (float)$q['monto_cuota'];
         $abono = (float)$q['monto_pagado'];
         if ($q['estado'] === 'PAGADO') {
             $pagado += $abono > 0 ? $abono : $cuota;   // por si alguna cuota pagada quedó con monto_pagado en 0
+        } elseif ($contratoAnulado) {
+            // El contrato fue anulado: las cuotas que seguían PENDIENTE ya no se
+            // cobrarán, así que al cliente se le muestran como ANULADO, no como
+            // si todavía debiera pagarlas.
+            $q['estado'] = 'ANULADO';
         } else {
             $pagado    += $abono;                       // abonos parciales
             $pendiente += max($cuota - $abono, 0);
         }
+    }
+    unset($q);
+
+    // Al cliente se le muestra "ANULADO" en vez de "CANCELADO" para el contrato también.
+    if ($contratoAnulado) {
+        $contrato['estado'] = 'ANULADO';
     }
 
     responder(true, 'OK', [
