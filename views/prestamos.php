@@ -150,15 +150,16 @@ try {
 
     <!-- MODAL NUEVO PRÉSTAMO -->
     <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden" id="modalNuevoPrestamo">
-        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col">
-            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-purple-600 text-white">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-purple-600 text-white flex-shrink-0">
                 <h4 class="font-bold text-base flex items-center gap-2">
                     <i class="fa-solid fa-calculator"></i> Crear Nuevo Préstamo / Crédito
                 </h4>
                 <button type="button" onclick="cerrarModalNuevoPrestamo()" class="text-white/80 hover:text-white p-1 text-lg"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            
-            <form id="formNuevoPrestamo" class="p-6 space-y-4 text-sm">
+
+            <form id="formNuevoPrestamo" class="flex flex-col flex-1 min-h-0 text-sm">
+            <div class="p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
                 <div class="relative search-container">
                     <label class="block font-semibold text-xs text-slate-700 mb-1">
                         <i class="fa-solid fa-user text-purple-600 mr-1"></i> Seleccionar Cliente:
@@ -277,13 +278,14 @@ try {
                         <span id="sim_cuota" class="text-purple-600 text-lg">L. 0.00</span>
                     </div>
                 </div>
+            </div>
 
-                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                    <button type="button" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition" onclick="cerrarModalNuevoPrestamo()">Cancelar</button>
-                    <button type="submit" id="btn_submit_prestamo" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition shadow-xs flex items-center gap-1.5">
-                        <i class="fa-solid fa-check"></i> Guardar y Generar Cuotas
-                    </button>
-                </div>
+            <div class="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-white flex-shrink-0">
+                <button type="button" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition" onclick="cerrarModalNuevoPrestamo()">Cancelar</button>
+                <button type="submit" id="btn_submit_prestamo" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition shadow-xs flex items-center gap-1.5">
+                    <i class="fa-solid fa-check"></i> Guardar y Generar Cuotas
+                </button>
+            </div>
             </form>
         </div>
     </div>
