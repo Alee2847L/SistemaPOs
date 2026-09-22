@@ -155,6 +155,9 @@ try {
         <button onclick="window.print()" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
             🖨️ Imprimir Factura
         </button>
+        <a href="../api/descargar_factura_pdf.php?id=<?php echo urlencode($venta['id_transaccion']); ?>&descargar=1" target="_blank" style="display: inline-block; padding: 8px 15px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; text-decoration: none; margin-left: 5px;">
+            📄 Descargar PDF
+        </a>
         <button onclick="window.close()" style="padding: 8px 15px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 5px;">
             ❌ Cerrar
         </button>
