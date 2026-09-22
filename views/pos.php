@@ -642,6 +642,13 @@ try {
         function agregarPrimaPendienteAlCarrito() {
             if (!primaPendienteActual) return;
 
+            // La prima no se puede mezclar con productos normales en la misma venta
+            // (así lo valida también procesar_venta.php): es un recibo interno aparte.
+            if (carrito.length > 0 && !carrito.every(item => item.es_prima_prestamo)) {
+                alert('No se puede cobrar la prima junto con otros productos en el mismo carrito. Termina o vacía esta venta primero, y cobra la prima en una venta aparte.');
+                return;
+            }
+
             const idPrima = 'prima_' + primaPendienteActual.contrato_id;
             if (carrito.some(item => item.id === idPrima)) {
                 alert('Esa prima ya está agregada al carrito.');
@@ -658,6 +665,11 @@ try {
                 es_prima_prestamo: true,
                 contrato_id: primaPendienteActual.contrato_id
             });
+
+            // El cobro de una prima siempre es de contado: se descarta cualquier cálculo
+            // de crédito que ya se hubiera hecho para este cliente en esta misma sesión.
+            tipoModalidadVenta = 'contado';
+            datosCreditoSeleccionado = null;
 
             document.getElementById('aviso_prima_pendiente_pos').classList.add('hidden');
             primaPendienteActual = null;
@@ -858,6 +870,12 @@ try {
         }
 
         function renderizarCarrito() {
+            // El cobro de una prima de préstamo siempre es de CONTADO (nunca a crédito):
+            // no tiene sentido financiar un pago que ya es, en sí mismo, un adelanto de un
+            // préstamo. Mientras haya una prima en el carrito, se oculta/bloquea la opción
+            // de crédito por completo.
+            actualizarDisponibilidadCreditoPorCarrito();
+
             const tbody = document.getElementById('tablaCarrito');
             if (carrito.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-400 py-6">No hay productos agregados al carrito</td></tr>';
@@ -1102,7 +1120,19 @@ try {
         }
 
         // --- CÁLCULO DE CRÉDITO ---
+        function actualizarDisponibilidadCreditoPorCarrito() {
+            const tieneCobroPrima = carrito.some(item => item.es_prima_prestamo);
+            if (tieneCobroPrima) {
+                tipoModalidadVenta = 'contado';
+                document.getElementById('contenedor_btn_credito').style.display = 'none';
+            }
+        }
+
         function abrirModalCredito() {
+            if (carrito.some(item => item.es_prima_prestamo)) {
+                alert('El cobro de una prima de préstamo siempre es de CONTADO (efectivo/tarjeta); no se puede financiar a crédito.');
+                return;
+            }
             if (totalVentaActual <= 0) {
                 alert('El carrito está vacío. Agregue productos antes de calcular un crédito.');
                 return;

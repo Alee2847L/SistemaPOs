@@ -325,14 +325,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // contratos.prima_venta_id se queda en NULL hasta que se cobre en POS.
 
         $pdo->commit();
-        $contratoParaPlan = (int)$contrato_id;
+        // El plan de pagos por correo solo se envía de inmediato si el contrato NO tiene
+        // prima (nada que cobrar antes). Si tiene prima, queda pendiente de cobro en POS,
+        // y es procesar_venta.php quien envía el plan justo cuando esa prima se cobra.
+        if ($prima <= 0) {
+            $contratoParaPlan = (int)$contrato_id;
+        }
         echo json_encode(['success' => true, 'message' => 'Préstamo y cuotas registradas con éxito']);
     } catch (Exception $e) {
         $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'Error al guardar: ' . $e->getMessage()]);
     }
 
-    // Enviar el plan de pagos al cliente por correo.
+    // Enviar el plan de pagos al cliente por correo (solo cuando no hay prima pendiente).
     // Ya se respondió al usuario: si el servidor lo permite (PHP-FPM) se cierra la respuesta
     // antes de enviar, así la pantalla no espera al SMTP. Si el correo falla, el contrato queda igual.
     if ($contratoParaPlan) {

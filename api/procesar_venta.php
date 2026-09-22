@@ -410,6 +410,7 @@ try {
     // marcada como cobrada, se vea en Arqueo y no se pueda volver a cobrar.
     // El monto se revalida contra lo guardado en el contrato (no se confía en
     // lo que mandó el navegador), con tolerancia para no fallar por redondeo.
+    $contratosPrimaCobradaAhora = [];
     if ($esPrimaPrestamo) {
         foreach ($itemsPrimaPrestamo as $itemPrima) {
             $contratoIdPrima = intval($itemPrima['contrato_id'] ?? 0);
@@ -438,6 +439,7 @@ try {
             }
 
             $pdo->prepare("UPDATE contratos SET prima_venta_id = ? WHERE id = ?")->execute([$ventaId, $contratoIdPrima]);
+            $contratosPrimaCobradaAhora[] = $contratoIdPrima;
         }
     }
 
@@ -474,6 +476,23 @@ try {
         }
         require_once __DIR__ . '/enviar_comprobante_venta.php';
         enviarComprobanteVentaPorCorreo($pdo, $ventaParaCorreo, $contratoParaCorreo);
+    }
+
+    // Si esta venta fue el cobro de una prima de préstamo pendiente, es hasta AHORA
+    // (ya cobrada) que se envía el plan de pagos por correo al cliente — no se envía
+    // cuando se creó el contrato, para no adelantar un plan que todavía no aplicaba.
+    // (Este bloque y el de arriba son mutuamente excluyentes: $esPrimaPrestamo nunca es
+    // true al mismo tiempo que la condición del bloque anterior, así que la conexión
+    // solo se cierra una vez por petición.)
+    if (!empty($contratosPrimaCobradaAhora)) {
+        ignore_user_abort(true);
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+        require_once __DIR__ . '/enviar_plan_pagos.php';
+        foreach ($contratosPrimaCobradaAhora as $contratoIdCobrado) {
+            enviarPlanPagosPorCorreo($pdo, $contratoIdCobrado);
+        }
     }
 
 } catch (Exception $e) {
