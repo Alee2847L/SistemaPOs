@@ -40,7 +40,9 @@ $recaudosHoy = [];
 try {
     // 1. Obtener ventas abiertas del POS
     $stmtVentas = $pdo->query("
-        SELECT v.id_transaccion as id, 'VENTA' as tipo, v.cliente_codigo_bp, v.total, v.monto_efectivo, v.monto_tarjeta, v.fecha_venta as fecha, v.metodo_pago, v.cambio_entregado, u.nombre as cajero
+        SELECT v.id_transaccion as id,
+               CASE WHEN v.tipo_comprobante = 'Prima de Préstamo' THEN 'PRIMA' ELSE 'VENTA' END as tipo,
+               v.cliente_codigo_bp, v.total, v.monto_efectivo, v.monto_tarjeta, v.fecha_venta as fecha, v.metodo_pago, v.cambio_entregado, u.nombre as cajero
         FROM ventas v
         JOIN usuarios u ON v.usuario_id = u.id
         WHERE v.estado_caja = 'abierta' OR v.estado_caja IS NULL
@@ -162,8 +164,9 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
             $pdo->beginTransaction();
 
             $cantidadTransacciones = count($transaccionesHoy);
-            if ($cantidadTransacciones === 0) {
-                throw new Exception("No hay transacciones ni recaudos pendientes de cierre para procesar.");
+            $hayPrestamosPendientes = ($prestamosHoyCantidad > 0 || $anulacionesHoyCantidad > 0);
+            if ($cantidadTransacciones === 0 && !$hayPrestamosPendientes) {
+                throw new Exception("No hay transacciones, recaudos ni préstamos pendientes de cierre para procesar.");
             }
 
             $stmtCierre = $pdo->prepare("INSERT INTO cierres_caja (usuario_id, total_ventas, cantidad_transacciones, fecha_cierre, detalle_transacciones) VALUES (?, ?, ?, NOW(), ?)");

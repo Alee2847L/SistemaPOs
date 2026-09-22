@@ -194,6 +194,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Pagos de la prima (dinero que sí entra a caja: a diferencia del monto financiado,
+    // esto se registra como transacción para que aparezca en Arqueo/Transacciones del día).
+    $pagosPrima = is_array($input['pagos_prima'] ?? null) ? $input['pagos_prima'] : [];
+    if ($prima > 0) {
+        $sumaPagosPrima = 0.0;
+        foreach ($pagosPrima as $p) {
+            $sumaPagosPrima += floatval($p['monto'] ?? 0);
+        }
+        if (empty($pagosPrima) || round($sumaPagosPrima, 2) !== round($prima, 2)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'El desglose de pago de la prima (efectivo + tarjeta) debe sumar exactamente L. ' . number_format($prima, 2) . '.'
+            ]);
+            exit;
+        }
+    }
+
     // Validación de mora: no se otorgan préstamos nuevos a un cliente que ya
     // tenga cuotas vencidas sin pagar en un contrato activo.
     require_once __DIR__ . '/mora_helper.php';
@@ -272,6 +289,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sumaCuotas += $monto_cuota;
 
             $stmtCuota->execute([$contrato_id, $i, $monto_cuota, $fechaVencimiento]);
+        }
+
+        // Registrar la prima como transacción de caja (efectivo/tarjeta), para que se
+        // sume en Arqueo y aparezca en el historial de Transacciones del día — a
+        // diferencia del monto financiado, este dinero sí entra físicamente a caja.
+        // Se guarda como "Recibo Interno" (numero_factura = NULL): NO consume un
+        // número del correlativo fiscal autorizado por la SAR.
+        if ($prima > 0) {
+            $stmtCliente = $pdo->prepare("SELECT Nombre, rtn_dni FROM clientes WHERE codigo_bp = ? LIMIT 1");
+            $stmtCliente->execute([$codigo_bp]);
+            $clienteInfo = $stmtCliente->fetch(PDO::FETCH_ASSOC) ?: [];
+            $clienteNombrePrima = $clienteInfo['Nombre'] ?? 'Consumidor Final';
+            $clienteRtnPrima    = $clienteInfo['rtn_dni'] ?? '0000000000000';
+
+            $montoEfectivoPrima = 0.0;
+            $montoTarjetaPrima  = 0.0;
+            $metodosUsadosPrima = [];
+            foreach ($pagosPrima as $p) {
+                $monto  = floatval($p['monto'] ?? 0);
+                $metodo = strtolower(trim($p['metodo'] ?? 'efectivo'));
+                if ($metodo === 'tarjeta') {
+                    $montoTarjetaPrima += $monto;
+                } else {
+                    $montoEfectivoPrima += $monto;
+                }
+                $metodosUsadosPrima[] = ($metodo === 'tarjeta') ? 'Tarjeta' : 'Efectivo';
+            }
+            $metodoPagoPrima = implode(' / ', array_unique($metodosUsadosPrima));
+
+            $stmtVentaPrima = $pdo->prepare("
+                INSERT INTO ventas (
+                    numero_factura, usuario_id, cliente_codigo_bp, cliente_identidad,
+                    cliente_nombre, cliente_rtn, tipo_comprobante, total,
+                    ahorro_total, metodo_pago, monto_efectivo, monto_tarjeta,
+                    monto_abonado, monto_recibido, cambio_entregado,
+                    es_credito, prima, plazo_meses, monto_financiar,
+                    interes_total, cuota_mensual, total_credito, fecha_venta
+                ) VALUES (
+                    NULL, ?, ?, ?,
+                    ?, ?, 'Prima de Préstamo', ?,
+                    0, ?, ?, ?,
+                    ?, ?, 0,
+                    0, ?, 0, 0,
+                    0, 0, 0, NOW()
+                )
+            ");
+            $stmtVentaPrima->execute([
+                $_SESSION['usuario_id'],
+                $codigo_bp,
+                $clienteRtnPrima,
+                $clienteNombrePrima,
+                $clienteRtnPrima,
+                $prima,
+                $metodoPagoPrima,
+                $montoEfectivoPrima,
+                $montoTarjetaPrima,
+                $prima,
+                $montoEfectivoPrima,
+                $prima
+            ]);
+            $ventaPrimaId = $pdo->lastInsertId();
+
+            $stmtPagoPrima = $pdo->prepare("
+                INSERT INTO pagos_ventas (venta_id, metodo, monto, detalle, titular, digitos, voucher)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
+            foreach ($pagosPrima as $p) {
+                $metodo = strtolower(trim($p['metodo'] ?? 'efectivo'));
+                $tarjeta = $p['detalles_tarjeta'] ?? null;
+                $stmtPagoPrima->execute([
+                    $ventaPrimaId,
+                    ($metodo === 'tarjeta') ? 'Tarjeta' : 'Efectivo',
+                    floatval($p['monto'] ?? 0),
+                    'Prima del préstamo (Contrato #' . $contrato_id . ')',
+                    $tarjeta['titular'] ?? null,
+                    $tarjeta['digitos'] ?? null,
+                    $tarjeta['voucher'] ?? null
+                ]);
+            }
         }
 
         $pdo->commit();
