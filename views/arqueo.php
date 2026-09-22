@@ -91,11 +91,15 @@ $prestamosHoyCantidad = 0;
 $prestamosHoyTotal = 0.0;
 $anulacionesHoyCantidad = 0;
 $anulacionesHoyTotal = 0.0;
+// NOTA: se filtra por estado_caja (igual que ventas/transacciones_recaudo), no por
+// la fecha del día, para que este panel se reinicie exactamente cuando se cierra la
+// caja (y no a medianoche). Si el cajero abre un turno que cruza la medianoche, los
+// préstamos de ese turno se siguen contando hasta que se haga el cierre.
 try {
     $stmtPrestamosHoy = $pdo->query("
         SELECT COUNT(*) AS cantidad, COALESCE(SUM(monto_financiar), 0) AS total
         FROM contratos
-        WHERE tipo_contrato = 'prestamo' AND DATE(fecha_inicio) = CURDATE()
+        WHERE tipo_contrato = 'prestamo' AND (estado_caja = 'abierta' OR estado_caja IS NULL)
     ");
     $rowPrestamosHoy = $stmtPrestamosHoy->fetch(PDO::FETCH_ASSOC);
     $prestamosHoyCantidad = (int)($rowPrestamosHoy['cantidad'] ?? 0);
@@ -107,7 +111,7 @@ try {
     $stmtAnulHoy = $pdo->query("
         SELECT COUNT(*) AS cantidad, COALESCE(SUM(monto_restaurado), 0) AS total
         FROM anulaciones_prestamo
-        WHERE DATE(fecha) = CURDATE()
+        WHERE (estado_caja = 'abierta' OR estado_caja IS NULL)
     ");
     $rowAnulHoy = $stmtAnulHoy->fetch(PDO::FETCH_ASSOC);
     $anulacionesHoyCantidad = (int)($rowAnulHoy['cantidad'] ?? 0);
@@ -173,6 +177,15 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
             // Actualizar estados a 'cerrada' tanto en ventas como en recaudos
             $pdo->query("UPDATE ventas SET estado_caja = 'cerrada' WHERE estado_caja = 'abierta' OR estado_caja IS NULL");
             $pdo->query("UPDATE transacciones_recaudo SET estado_caja = 'cerrada' WHERE estado_caja = 'abierta' OR estado_caja IS NULL");
+
+            // Lo mismo para el panel informativo de préstamos/anulaciones: al cerrar
+            // caja, el conteo del día vuelve a 0 hasta el próximo préstamo/anulación.
+            try {
+                $pdo->query("UPDATE contratos SET estado_caja = 'cerrada' WHERE tipo_contrato = 'prestamo' AND (estado_caja = 'abierta' OR estado_caja IS NULL)");
+            } catch (Exception $e) { /* columna/tabla aún no migrada; se ignora */ }
+            try {
+                $pdo->query("UPDATE anulaciones_prestamo SET estado_caja = 'cerrada' WHERE (estado_caja = 'abierta' OR estado_caja IS NULL)");
+            } catch (Exception $e) { /* columna/tabla aún no migrada; se ignora */ }
 
             $pdo->commit();
             $mensaje = "<div class='mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-medium'>¡Cierre de caja realizado con éxito! Total registrado: L. " . number_format($totalGeneralContado, 2) . "</div>";
