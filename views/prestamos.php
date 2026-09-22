@@ -685,10 +685,14 @@ try {
 
                         // --- Estado de la prima: si el contrato tiene prima y todavía no
                         // se ha cobrado en POS (contratos.prima_venta_id sigue en NULL),
-                        // no se muestra el plan de pagos hasta que se cobre.
+                        // no se muestra el plan de pagos hasta que se cobre. Un contrato ya
+                        // ANULADO/CANCELADO nunca cuenta como "pendiente" aunque su prima
+                        // nunca se haya cobrado: ya no hay nada que cobrar ni que financiar.
                         const prima = parseFloat(c.prima) || 0;
-                        const primaCobrada = !!c.prima_venta_id;
-                        const primaPendiente = prima > 0 && !primaCobrada;
+                        const contratoActivo = c.estado === 'ACTIVO';
+                        // prima_venta_id: null/0 = no cobrada, un id real (> 0) = cobrada.
+                        const primaCobrada = !!c.prima_venta_id && parseInt(c.prima_venta_id) > 0;
+                        const primaPendiente = contratoActivo && prima > 0 && !primaCobrada;
 
                         const lineaPrima = document.getElementById('plan_prima_linea');
                         const badgePrima = document.getElementById('plan_prima_badge');
@@ -702,6 +706,9 @@ try {
                             if (primaCobrada) {
                                 badgePrima.innerText = 'COBRADA';
                                 badgePrima.className = 'ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700';
+                            } else if (!contratoActivo) {
+                                badgePrima.innerText = 'N/A (CONTRATO ANULADO)';
+                                badgePrima.className = 'ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600';
                             } else {
                                 badgePrima.innerText = 'PENDIENTE';
                                 badgePrima.className = 'ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700';

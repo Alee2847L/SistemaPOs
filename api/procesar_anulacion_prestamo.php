@@ -81,6 +81,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 6. Marcar el contrato como CANCELADO (las cuotas quedan como historial, ya no se cobrarán)
         $pdo->prepare("UPDATE contratos SET estado = 'CANCELADO' WHERE id = ?")->execute([$contratoId]);
 
+        // 6.5 Si el contrato tenía una prima que nunca llegó a cobrarse en POS
+        // (prima_venta_id seguía en NULL = pendiente), se marca explícitamente como
+        // "cancelada sin cobrar" (prima_venta_id = 0). Esto es un refuerzo, además del
+        // filtro por estado = 'ACTIVO' que ya usan verificar_prima_pendiente (POS) y el
+        // plan de pagos: así, aunque solo se revise prima_venta_id, un contrato anulado
+        // nunca vuelve a ofrecerse como "prima pendiente de cobro".
+        // 0 es un valor imposible para un id real de venta (autoincremental desde 1), así
+        // que queda claramente distinguido de NULL (pendiente) y de un id real (cobrada).
+        if (empty($contrato['prima_venta_id']) && (float)($contrato['prima'] ?? 0) > 0) {
+            $pdo->prepare("UPDATE contratos SET prima_venta_id = 0 WHERE id = ?")->execute([$contratoId]);
+        }
+
         // 7. Registrar la anulación
         $stmtLog = $pdo->prepare("
             INSERT INTO anulaciones_prestamo (contrato_id, codigo_bp, cliente_nombre, motivo, comentario, monto_restaurado, usuario_id)
