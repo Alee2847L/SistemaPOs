@@ -18,7 +18,7 @@ $modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
 if (!in_array('arqueo', $modulos_permitidos)) {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
-        'success' => false, 
+        'success' => false,
         'message' => 'Acceso denegado: El módulo de Cotizaciones no está incluido en el plan de su empresa.'
     ]);
     exit; // Detiene la ejecución por completo
@@ -49,14 +49,14 @@ try {
 
     // 2. Obtener transacciones de recaudo pendientes del turno abierto (con desglose real de efectivo y tarjeta)
     $stmtRecaudos = $pdo->query("
-        SELECT tr.id as id, 'RECAUDO' as tipo, 
-               COALESCE(c.codigo_bp, 'BP000') as cliente_codigo_bp, 
-               tr.monto_total as total, 
-               tr.monto_efectivo as monto_efectivo, 
-               tr.monto_tarjeta as monto_tarjeta, 
-               tr.fecha as fecha, 
-               tr.tipo_pago as metodo_pago, 
-               0 as cambio_entregado, 
+        SELECT tr.id as id, 'RECAUDO' as tipo,
+               COALESCE(c.codigo_bp, 'BP000') as cliente_codigo_bp,
+               tr.monto_total as total,
+               tr.monto_efectivo as monto_efectivo,
+               tr.monto_tarjeta as monto_tarjeta,
+               tr.fecha as fecha,
+               tr.tipo_pago as metodo_pago,
+               0 as cambio_entregado,
                COALESCE(u.nombre, 'Sistema') as cajero
         FROM transacciones_recaudo tr
         LEFT JOIN contratos co ON tr.contrato_id = co.id
@@ -81,6 +81,39 @@ foreach ($transaccionesHoy as $t) {
     $granTotalSistema += floatval($t['total']);
     $totalEfectivoSistema += floatval($t['monto_efectivo'] ?? 0);
     $totalTarjetaSistema  += floatval($t['monto_tarjeta'] ?? 0);
+}
+
+// 2.5 PRÉSTAMOS DEL DÍA — Panel puramente informativo (NO afecta el efectivo/tarjeta
+// esperado en caja, porque el dinero de un préstamo nunca ingresa físicamente a la
+// caja registradora). Sirve para que el administrador pueda cuadrar/contar cuántos
+// préstamos se otorgaron y por cuánto en el día, y cuántas anulaciones hubo.
+$prestamosHoyCantidad = 0;
+$prestamosHoyTotal = 0.0;
+$anulacionesHoyCantidad = 0;
+$anulacionesHoyTotal = 0.0;
+try {
+    $stmtPrestamosHoy = $pdo->query("
+        SELECT COUNT(*) AS cantidad, COALESCE(SUM(monto_financiar), 0) AS total
+        FROM contratos
+        WHERE tipo_contrato = 'prestamo' AND DATE(fecha_inicio) = CURDATE()
+    ");
+    $rowPrestamosHoy = $stmtPrestamosHoy->fetch(PDO::FETCH_ASSOC);
+    $prestamosHoyCantidad = (int)($rowPrestamosHoy['cantidad'] ?? 0);
+    $prestamosHoyTotal = (float)($rowPrestamosHoy['total'] ?? 0);
+} catch (Exception $e) {
+    // Si la tabla/columna no existe todavía, simplemente no se muestra el dato.
+}
+try {
+    $stmtAnulHoy = $pdo->query("
+        SELECT COUNT(*) AS cantidad, COALESCE(SUM(monto_restaurado), 0) AS total
+        FROM anulaciones_prestamo
+        WHERE DATE(fecha) = CURDATE()
+    ");
+    $rowAnulHoy = $stmtAnulHoy->fetch(PDO::FETCH_ASSOC);
+    $anulacionesHoyCantidad = (int)($rowAnulHoy['cantidad'] ?? 0);
+    $anulacionesHoyTotal = (float)($rowAnulHoy['total'] ?? 0);
+} catch (Exception $e) {
+    // La tabla anulaciones_prestamo podría no existir aún; se omite el dato.
 }
 
 // 3. PROCESAR CIERRE DE CAJA
@@ -119,7 +152,7 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
                 'tarjeta_contado'  => $totalTarjetaContado,
                 'tarjeta_sistema'  => $totalTarjetaSistema,
                 'dif_tarjeta'      => $difTarjeta,
-                'post_data'        => $_POST 
+                'post_data'        => $_POST
             ];
         } else {
             $pdo->beginTransaction();
@@ -143,7 +176,7 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
 
             $pdo->commit();
             $mensaje = "<div class='mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-medium'>¡Cierre de caja realizado con éxito! Total registrado: L. " . number_format($totalGeneralContado, 2) . "</div>";
-            
+
             $transaccionesHoy = [];
             $granTotalSistema = 0;
             $totalEfectivoSistema = 0;
@@ -264,13 +297,13 @@ try {
 
             <form method="POST" id="form-conteo-caja">
                 <input type="hidden" name="accion" value="hacer_cierre">
-                
+
                 <p class="text-xs text-slate-500 mb-4">Ingrese la cantidad de piezas/billetes de efectivo contados y el total de los vouchers de tarjetas.</p>
 
                 <div class="grid grid-cols-2 gap-3 mb-4 max-h-[50vh] overflow-y-auto pr-2">
-                    <?php 
+                    <?php
                     $denominacionesLista = [500, 200, 100, 50, 20, 10, 5, 3, 2, 1];
-                    foreach($denominacionesLista as $denim): 
+                    foreach($denominacionesLista as $denim):
                         $valAnterior = $datosDiferencia['post_data']['billete_' . $denim] ?? '0';
                     ?>
                     <div class="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
@@ -386,12 +419,12 @@ try {
                     <p class="text-xs sm:text-sm text-slate-600 mb-2">Efectivo esperado en caja (Ventas + Recaudos netos de devoluciones): <strong class="text-slate-900">L. <?php echo number_format($totalEfectivoSistema, 2); ?></strong></p>
                     <p class="text-xs sm:text-sm text-slate-600 mb-6">Tarjetas esperadas: <strong class="text-slate-900">L. <?php echo number_format($totalTarjetaSistema, 2); ?></strong></p>
                 </div>
-                
+
                 <button type="button" onclick="abrirModalConteo()" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs sm:text-sm py-3 px-4 rounded-xl transition shadow-sm flex items-center justify-center gap-2">
                     <i class="fa-solid fa-lock"></i> Ejecutar Cierre de Caja
                 </button>
             </div>
-            
+
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
                     <h5 class="font-bold text-slate-900 text-sm sm:text-base mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
@@ -407,6 +440,26 @@ try {
                     <button class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2" onclick="window.print()">
                         <i class="fa-solid fa-print"></i> Imprimir Vista Actual
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel informativo: Préstamos del Día (NO afecta el Arqueo de Caja) -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <h4 class="font-bold text-slate-900 text-base mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-hand-holding-dollar text-violet-600"></i> Préstamos del Día
+            </h4>
+            <p class="text-slate-500 text-xs mb-4">Solo informativo: estos montos <strong>no</strong> se suman ni se restan del efectivo/tarjetas esperado en caja, porque el desembolso de un préstamo no pasa físicamente por la caja registradora.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-violet-50 border border-violet-200 rounded-xl p-4">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-violet-500 mb-1">Préstamos Otorgados Hoy</p>
+                    <p class="text-xl font-extrabold text-violet-700"><?php echo $prestamosHoyCantidad; ?> <span class="text-sm font-medium text-violet-500">contrato(s)</span></p>
+                    <p class="text-sm text-violet-700 mt-1">Monto financiado total: <strong>L. <?php echo number_format($prestamosHoyTotal, 2); ?></strong></p>
+                </div>
+                <div class="bg-teal-50 border border-teal-200 rounded-xl p-4">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-teal-500 mb-1">Anulaciones de Préstamo Hoy</p>
+                    <p class="text-xl font-extrabold text-teal-700"><?php echo $anulacionesHoyCantidad; ?> <span class="text-sm font-medium text-teal-500">contrato(s)</span></p>
+                    <p class="text-sm text-teal-700 mt-1">Monto restituido a crédito: <strong>L. <?php echo number_format($anulacionesHoyTotal, 2); ?></strong></p>
                 </div>
             </div>
         </div>
@@ -429,7 +482,7 @@ try {
                     </thead>
                     <tbody class="divide-y divide-slate-200 text-xs sm:text-sm text-slate-700 bg-white">
                         <?php if(count($transacciones) > 0): ?>
-                            <?php foreach($transacciones as $t): 
+                            <?php foreach($transacciones as $t):
                                 $esDevolucion = floatval($t['total']) < 0;
                             ?>
                             <tr class="hover:bg-slate-50/80 transition <?php echo $esDevolucion ? 'bg-rose-50/40' : ''; ?>">
@@ -486,12 +539,12 @@ try {
                             <td class="py-3 px-4 text-slate-600"><?php echo $c['cantidad_transacciones']; ?></td>
                             <td class="py-3 px-4 font-bold text-slate-900">L. <?php echo number_format($c['total_ventas'], 2); ?></td>
                             <td class="py-3 px-4 text-center">
-                                <button class="bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs px-3 py-1.5 rounded-xl transition flex items-center gap-1 mx-auto" 
+                                <button class="bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs px-3 py-1.5 rounded-xl transition flex items-center gap-1 mx-auto"
                                     onclick="reimprimirCierre(
-                                        '<?php echo $c['id']; ?>', 
-                                        '<?php echo $c['fecha_cierre']; ?>', 
-                                        '<?php echo htmlspecialchars($c['admin_cierra'], ENT_QUOTES); ?>', 
-                                        '<?php echo $c['total_ventas']; ?>', 
+                                        '<?php echo $c['id']; ?>',
+                                        '<?php echo $c['fecha_cierre']; ?>',
+                                        '<?php echo htmlspecialchars($c['admin_cierra'], ENT_QUOTES); ?>',
+                                        '<?php echo $c['total_ventas']; ?>',
                                         '<?php echo htmlspecialchars($c['detalle_transacciones'], ENT_QUOTES); ?>'
                                     )">
                                     <i class="fa-solid fa-print text-[10px]"></i> Reimprimir Cierre

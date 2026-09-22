@@ -364,6 +364,21 @@ try {
         'message' => $msgExito
     ]);
 
+    // Enviar comprobante (y plan de pagos si es crédito) por correo. Solo en venta definitiva,
+    // nunca en cotización ni en orden pendiente. La respuesta ya se envió al POS (arriba);
+    // si el servidor lo permite (PHP-FPM) se cierra la conexión antes de enviar el correo.
+    if (!$esCotizacion && !$esPendiente) {
+        $ventaParaCorreo    = $ventaId;
+        $contratoParaCorreo = isset($contrato_id) ? (int)$contrato_id : null;
+
+        ignore_user_abort(true);
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+        require_once __DIR__ . '/enviar_comprobante_venta.php';
+        enviarComprobanteVentaPorCorreo($pdo, $ventaParaCorreo, $contratoParaCorreo);
+    }
+
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();

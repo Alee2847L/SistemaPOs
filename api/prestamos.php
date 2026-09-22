@@ -146,7 +146,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $total_credito = floatval($input['total_credito'] ?? 0);
     $numero_cuotas = intval($input['numero_cuotas'] ?? 1);
     $frecuencia = $input['frecuencia'] ?? 'mensual';
-    
+
+    // Fecha del primer pago: por defecto, 15 días después de hoy. El usuario puede elegir otra.
+    $fecha_primer_pago_input = trim($input['fecha_primer_pago'] ?? '');
+    if ($fecha_primer_pago_input !== '') {
+        $partesFecha = DateTime::createFromFormat('Y-m-d', $fecha_primer_pago_input);
+        if (!$partesFecha || $partesFecha->format('Y-m-d') !== $fecha_primer_pago_input) {
+            echo json_encode(['success' => false, 'message' => 'La fecha del primer pago no es válida.']);
+            exit;
+        }
+        $fechaPrimerPago = $partesFecha;
+    } else {
+        $fechaPrimerPago = new DateTime('+15 days');
+    }
+
     if (empty($codigo_bp) || $monto_financiar <= 0) {
         echo json_encode(['success' => false, 'message' => 'Datos incompletos o inválidos.']);
         exit;
@@ -174,23 +187,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $contrato_id = $pdo->lastInsertId();
 
-        $monto_cuota = $numero_cuotas > 0 ? ($total_credito / $numero_cuotas) : $total_credito;
-        
+        // Redondeo a centavos: cada cuota se calcula a 2 decimales y la última
+        // absorbe la diferencia, para que la suma cuadre exacto con total_credito.
+        $monto_cuota_base = $numero_cuotas > 0 ? round($total_credito / $numero_cuotas, 2) : round($total_credito, 2);
+
         $stmtCuota = $pdo->prepare("
             INSERT INTO cuotas_contrato (contrato_id, numero_cuota, monto_cuota, fecha_vencimiento, estado)
             VALUES (?, ?, ?, ?, 'PENDIENTE')
         ");
 
+        // Las fechas de vencimiento se calculan a partir de la fecha del PRIMER pago elegida
+        // (no desde "hoy"): la cuota 1 vence en $fechaPrimerPago, y las siguientes se espacian
+        // según la frecuencia. Para "mensual" se ajusta el día si el mes destino es más corto
+        // (ej. un primer pago el 31 no puede caer en un 31 de un mes de 30 días).
+        $anioBase = (int)$fechaPrimerPago->format('Y');
+        $mesBase  = (int)$fechaPrimerPago->format('n');
+        $diaBase  = (int)$fechaPrimerPago->format('j');
+
+        $sumaCuotas = 0.0;
         for ($i = 1; $i <= $numero_cuotas; $i++) {
             if ($frecuencia === 'mensual') {
-                $fechaVencimiento = date('Y-m-d', strtotime("+$i month"));
+                $mes  = $mesBase + ($i - 1);
+                $anio = $anioBase + intdiv($mes - 1, 12);
+                $mes  = (($mes - 1) % 12) + 1;
+                $ultimoDiaMes = (int)(new DateTime("$anio-$mes-01"))->format('t');
+                $dia = min($diaBase, $ultimoDiaMes);
+                $fechaVencimiento = sprintf('%04d-%02d-%02d', $anio, $mes, $dia);
             } else if ($frecuencia === 'quincenal') {
-                $dias = $i * 15;
-                $fechaVencimiento = date('Y-m-d', strtotime("+$dias days"));
+                $dias = ($i - 1) * 15;
+                $fechaVencimiento = (clone $fechaPrimerPago)->modify("+$dias days")->format('Y-m-d');
             } else {
-                $dias = $i * 7;
-                $fechaVencimiento = date('Y-m-d', strtotime("+$dias days"));
+                $dias = ($i - 1) * 7;
+                $fechaVencimiento = (clone $fechaPrimerPago)->modify("+$dias days")->format('Y-m-d');
             }
+
+            if ($i < $numero_cuotas) {
+                $monto_cuota = $monto_cuota_base;
+            } else {
+                // Última cuota: lo que falte para llegar exacto al total_credito
+                $monto_cuota = round($total_credito - $sumaCuotas, 2);
+            }
+            $sumaCuotas += $monto_cuota;
 
             $stmtCuota->execute([$contrato_id, $i, $monto_cuota, $fechaVencimiento]);
         }
