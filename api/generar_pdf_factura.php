@@ -71,11 +71,25 @@ if (!function_exists('generarPdfFactura')) {
         </body>
         </html>";
 
-        $dompdf = new Dompdf\Dompdf(['isRemoteEnabled' => false]);
-        $dompdf->loadHtml($htmlCompleto, 'UTF-8');
-        $dompdf->setPaper('letter', 'portrait');
-        $dompdf->render();
+        // Blindaje: dompdf usa internamente algunas construcciones que PHP 8.x marca
+        // como "Deprecated". Si el servidor tiene display_errors activo, esos avisos
+        // se imprimirían mezclados con el PDF/JSON de respuesta y romperían todo.
+        // Bajamos temporalmente el nivel de errores y además atrapamos cualquier
+        // salida accidental con un buffer, para que NUNCA se filtre nada aquí.
+        $nivelErrorPrevio = error_reporting();
+        error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE & ~E_WARNING);
+        ob_start();
+        try {
+            $dompdf = new Dompdf\Dompdf(['isRemoteEnabled' => false]);
+            $dompdf->loadHtml($htmlCompleto, 'UTF-8');
+            $dompdf->setPaper('letter', 'portrait');
+            $dompdf->render();
+            $pdfBinario = $dompdf->output();
+        } finally {
+            ob_end_clean(); // descarta cualquier aviso/advertencia que se haya impreso
+            error_reporting($nivelErrorPrevio);
+        }
 
-        return $dompdf->output();
+        return $pdfBinario;
     }
 }
