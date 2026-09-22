@@ -194,6 +194,14 @@ if (isset($_POST['accion']) && ($_POST['accion'] === 'hacer_cierre' || $_POST['a
             $granTotalSistema = 0;
             $totalEfectivoSistema = 0;
             $totalTarjetaSistema = 0;
+
+            // Reflejar el reinicio del panel de préstamos en esta misma respuesta,
+            // sin esperar a que se recargue la página (esas variables ya se habían
+            // leído de la BD más arriba, antes del UPDATE de este cierre).
+            $prestamosHoyCantidad = 0;
+            $prestamosHoyTotal = 0.0;
+            $anulacionesHoyCantidad = 0;
+            $anulacionesHoyTotal = 0.0;
         }
 
     } catch (Exception $e) {
