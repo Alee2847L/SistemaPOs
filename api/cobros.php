@@ -34,14 +34,21 @@ $accion = $_GET['accion'] ?? '';
 if ($accion === 'listar') {
     // hoy       -> solo cuotas que vencen exactamente hoy
     // atrasadas -> solo cuotas ya vencidas (antes de hoy)
-    // todos     -> ambas (por defecto)
+    // proximos  -> cuotas que todavía no vencen, dentro de los próximos N días
+    //              (para priorizar visitas antes de que caigan en mora)
+    // todos     -> en mora + vencen hoy (por defecto; no incluye "próximos")
     $filtro = $_GET['filtro'] ?? 'todos';
     $hoy = date('Y-m-d');
+    $diasProximos = max(1, min(30, (int)($_GET['dias'] ?? 7))); // ventana configurable, 7 días por defecto
 
+    $paramsFecha = [$hoy];
     if ($filtro === 'hoy') {
         $condicionFecha = 'cu.fecha_vencimiento = ?';
     } elseif ($filtro === 'atrasadas') {
         $condicionFecha = 'cu.fecha_vencimiento < ?';
+    } elseif ($filtro === 'proximos') {
+        $condicionFecha = 'cu.fecha_vencimiento > ? AND cu.fecha_vencimiento <= DATE_ADD(?, INTERVAL ' . $diasProximos . ' DAY)';
+        $paramsFecha = [$hoy, $hoy];
     } else {
         $condicionFecha = 'cu.fecha_vencimiento <= ?';
     }
@@ -68,7 +75,7 @@ if ($accion === 'listar') {
                  ORDER BY c.Nombre ASC, cu.fecha_vencimiento ASC";
 
         $stmt = $pdo->prepare($sql);
-        $stmt->execute(array_merge([$hoy], $paramsCobrador));
+        $stmt->execute(array_merge($paramsFecha, $paramsCobrador));
         $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (PDOException $e) {
         echo json_encode(['success' => false, 'message' => 'Error en la consulta: ' . $e->getMessage()]);
@@ -86,17 +93,19 @@ if ($accion === 'listar') {
         $bp = $f['codigo_bp'];
         if (!isset($clientesPorBp[$bp])) {
             $clientesPorBp[$bp] = [
-                'codigo_bp'            => $bp,
-                'nombre'               => $f['Nombre'],
-                'telefono'             => $f['Telefono'],
-                'direccion'            => $f['Direccion'],
-                'cobrador_asignado'    => $f['cobrador_asignado'],
-                'cuotas_pendientes'    => 0,
-                'cuota_exigible_total' => 0.0,
-                'dias_mora_max'        => 0,
-                'fecha_mas_antigua'    => $f['fecha_vencimiento'],
-                'tiene_atrasadas'      => false,
-                'tiene_hoy'            => false,
+                'codigo_bp'             => $bp,
+                'nombre'                => $f['Nombre'],
+                'telefono'              => $f['Telefono'],
+                'direccion'             => $f['Direccion'],
+                'cobrador_asignado'     => $f['cobrador_asignado'],
+                'cuotas_pendientes'     => 0,
+                'cuota_exigible_total'  => 0.0,
+                'dias_mora_max'         => 0,
+                'dias_para_vencer_min'  => null, // solo aplica al filtro "proximos"
+                'fecha_mas_antigua'     => $f['fecha_vencimiento'],
+                'tiene_atrasadas'       => false,
+                'tiene_hoy'             => false,
+                'tiene_proximas'        => false,
             ];
         }
 
@@ -104,6 +113,9 @@ if ($accion === 'listar') {
         $montoMora     = calcularMontoMora($montoCuota, $f['fecha_vencimiento'], $configMora, $hoy);
         $montoExigible = round($montoCuota + $montoMora, 2);
         $diasMora      = calcularDiasMora($f['fecha_vencimiento'], $hoy);
+        // Días que faltan para vencer (positivo = todavía no vence). Se usa para
+        // el filtro "Próximos a vencer": la cuota más cercana define la prioridad.
+        $diasParaVencer = (int)round((strtotime($f['fecha_vencimiento']) - strtotime($hoy)) / 86400);
 
         $clientesPorBp[$bp]['cuotas_pendientes']++;
         $clientesPorBp[$bp]['cuota_exigible_total'] += $montoExigible;
@@ -116,8 +128,13 @@ if ($accion === 'listar') {
         }
         if ($diasMora > 0) {
             $clientesPorBp[$bp]['tiene_atrasadas'] = true;
-        } else {
+        } elseif ($diasParaVencer <= 0) {
             $clientesPorBp[$bp]['tiene_hoy'] = true;
+        } else {
+            $clientesPorBp[$bp]['tiene_proximas'] = true;
+            if ($clientesPorBp[$bp]['dias_para_vencer_min'] === null || $diasParaVencer < $clientesPorBp[$bp]['dias_para_vencer_min']) {
+                $clientesPorBp[$bp]['dias_para_vencer_min'] = $diasParaVencer;
+            }
         }
     }
 

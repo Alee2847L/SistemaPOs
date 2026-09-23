@@ -82,6 +82,7 @@ try {
                 <button type="button" id="btnFiltroTodos" onclick="cambiarFiltro('todos')" class="filtro-cobros px-3.5 py-2 rounded-xl text-xs font-semibold border transition">Todos</button>
                 <button type="button" id="btnFiltroHoy" onclick="cambiarFiltro('hoy')" class="filtro-cobros px-3.5 py-2 rounded-xl text-xs font-semibold border transition">Vencen hoy</button>
                 <button type="button" id="btnFiltroAtrasadas" onclick="cambiarFiltro('atrasadas')" class="filtro-cobros px-3.5 py-2 rounded-xl text-xs font-semibold border transition">Atrasadas</button>
+                <button type="button" id="btnFiltroProximos" onclick="cambiarFiltro('proximos')" class="filtro-cobros px-3.5 py-2 rounded-xl text-xs font-semibold border transition">Próximos a vencer</button>
                 <span class="ml-auto text-xs text-slate-400" id="lblTotalClientes"></span>
             </div>
 
@@ -93,7 +94,7 @@ try {
                             <th class="py-3.5 px-4">Cliente</th>
                             <th class="py-3.5 px-4">Teléfono</th>
                             <th class="py-3.5 px-4">Dirección</th>
-                            <th class="py-3.5 px-4">Días de mora</th>
+                            <th class="py-3.5 px-4" id="thDiasMora">Días de mora</th>
                             <th class="py-3.5 px-4 text-right">Cuota Exigible</th>
                             <th class="py-3.5 px-4 text-center">Acción</th>
                         </tr>
@@ -115,7 +116,7 @@ try {
 
         function cambiarFiltro(filtro) {
             filtroActual = filtro;
-            ['Todos', 'Hoy', 'Atrasadas'].forEach(sufijo => {
+            ['Todos', 'Hoy', 'Atrasadas', 'Proximos'].forEach(sufijo => {
                 const btn = document.getElementById('btnFiltro' + sufijo);
                 const activo = sufijo.toLowerCase() === filtro || (sufijo === 'Todos' && filtro === 'todos');
                 if (activo) {
@@ -149,20 +150,34 @@ try {
                     const data = res.data || [];
                     document.getElementById('lblTotalClientes').innerText = `${data.length} cliente(s)`;
 
+                    const esProximos = filtroActual === 'proximos';
+                    document.getElementById('thDiasMora').innerText = esProximos ? 'Vence en' : 'Días de mora';
+
                     if (data.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">No hay clientes con cuotas en mora o que venzan hoy para este filtro.</td></tr>';
+                        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-400">${esProximos ? 'No hay cuotas próximas a vencer en los próximos días.' : 'No hay clientes con cuotas en mora o que venzan hoy para este filtro.'}</td></tr>`;
                         return;
                     }
 
-                    // Prioridad: primero los más atrasados
-                    data.sort((a, b) => (b.dias_mora_max || 0) - (a.dias_mora_max || 0));
+                    // Prioridad: en mora/hoy, primero los más atrasados; en "próximos",
+                    // primero la fecha más cercana (la que toca visitar antes).
+                    if (esProximos) {
+                        data.sort((a, b) => (a.dias_para_vencer_min ?? 999) - (b.dias_para_vencer_min ?? 999));
+                    } else {
+                        data.sort((a, b) => (b.dias_mora_max || 0) - (a.dias_mora_max || 0));
+                    }
 
                     let html = '';
                     data.forEach(c => {
-                        const diasMora = parseInt(c.dias_mora_max || 0);
-                        const badgeMora = diasMora > 0
-                            ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">${diasMora} días</span>`
-                            : `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">Vence hoy</span>`;
+                        let badgeMora;
+                        if (esProximos) {
+                            const diasFaltan = parseInt(c.dias_para_vencer_min ?? 0);
+                            badgeMora = `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700">En ${diasFaltan} día${diasFaltan === 1 ? '' : 's'}</span>`;
+                        } else {
+                            const diasMora = parseInt(c.dias_mora_max || 0);
+                            badgeMora = diasMora > 0
+                                ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">${diasMora} días</span>`
+                                : `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">Vence hoy</span>`;
+                        }
 
                         html += `
                         <tr class="border-b border-slate-100 hover:bg-slate-50">

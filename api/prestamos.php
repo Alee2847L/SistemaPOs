@@ -11,14 +11,19 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-// El cobrador no tiene acceso al módulo de Préstamos (no genera contratos
-// nuevos): su acceso es solo Clientes, Cobros y Recaudo.
-if (($_SESSION['usuario_rol'] ?? '') === 'cobrador') {
+$accion = $_GET['accion'] ?? '';
+
+// El cobrador no tiene acceso al módulo de Préstamos como tal (no puede ver
+// el listado general ni generar contratos nuevos), pero sí necesita poder
+// consultar los contratos de UN cliente puntual (con o sin mora): es lo que
+// usa el botón "Ver contratos" del módulo de Clientes. Se deja pasar solo esa
+// consulta de lectura; todo lo demás (listar, ver_cuotas, verificar_mora,
+// verificar_prima_pendiente y cualquier POST) sigue bloqueado para él.
+if (($_SESSION['usuario_rol'] ?? '') === 'cobrador'
+    && !($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'contratos_por_cliente')) {
     echo json_encode(['success' => false, 'message' => 'No tienes acceso al módulo de Préstamos.']);
     exit;
 }
-
-$accion = $_GET['accion'] ?? '';
 
 // 1. Listar contratos con filtro de fechas
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $accion === 'listar') {
