@@ -11,7 +11,7 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 $modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
-if (!in_array('repprestamos', $modulos_permitidos)) {
+if (!in_array('prestamos', $modulos_permitidos)) {
     header('Location: ../index.php');
     exit;
 }
@@ -280,6 +280,15 @@ try {
                             tension: 0.3,
                             fill: true,
                             yAxisID: 'yGanancia',
+                            // Radio de punto grande a propósito: cuando el rango elegido
+                            // solo tiene datos en un período (un mes o una semana), la
+                            // "línea" queda con un solo punto y Chart.js no dibuja ningún
+                            // segmento, así que sin esto el punto casi no se ve.
+                            pointRadius: 6,
+                            pointHoverRadius: 8,
+                            pointBackgroundColor: 'rgb(16, 185, 129)',
+                            pointBorderColor: '#ffffff',
+                            pointBorderWidth: 2,
                         }
                     ]
                 },
