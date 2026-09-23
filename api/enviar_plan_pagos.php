@@ -56,12 +56,26 @@ function enviarPlanPagosPorCorreo(PDO $pdo, int $contratoId): bool {
             return false;
         }
 
-        // 3. Nombre de la empresa
+        // 3. Nombre de la empresa y, si esta empresa lo tiene activado, el aviso de
+        // recargo por mora diaria (mora_diaria_activa / mora_diaria_porcentaje en
+        // `configuracion`; ver migracion_mora_diaria.sql). Es por base de datos, así
+        // que cada cliente puede tenerlo activado o no sin cambiar código.
         $empresa = 'Sistema POS';
+        $moraDiariaActiva = false;
+        $moraDiariaPorcentaje = 0.0;
         try {
-            $row = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            $row = $pdo->query("SELECT nombre_empresa, mora_diaria_activa, mora_diaria_porcentaje FROM configuracion LIMIT 1")->fetch(PDO::FETCH_ASSOC);
             if (!empty($row['nombre_empresa'])) $empresa = $row['nombre_empresa'];
-        } catch (Throwable $e) { /* se mantiene el valor por defecto */ }
+            $moraDiariaActiva = !empty($row['mora_diaria_activa']);
+            $moraDiariaPorcentaje = (float)($row['mora_diaria_porcentaje'] ?? 0);
+        } catch (Throwable $e) {
+            // Si falta la migración (columnas mora_diaria_*), se reintenta solo con
+            // nombre_empresa para no dejar de enviar el correo.
+            try {
+                $row = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                if (!empty($row['nombre_empresa'])) $empresa = $row['nombre_empresa'];
+            } catch (Throwable $e2) { /* se mantiene el valor por defecto */ }
+        }
 
         // 4. Cuerpo del correo (todo lo que viene de la BD se escapa)
         $h   = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -82,6 +96,15 @@ function enviarPlanPagosPorCorreo(PDO $pdo, int $contratoId): bool {
             $entregaDetalle = 'Transferencia bancaria — ' . $h($c['banco_entrega'] ?? '-') . ', Cuenta: ' . $h($c['numero_cuenta_entrega'] ?? '-');
         } else {
             $entregaDetalle = 'Efectivo';
+        }
+
+        $avisoMoraDiaria = '';
+        if ($moraDiariaActiva && $moraDiariaPorcentaje > 0) {
+            $porcentajeTexto = $h(rtrim(rtrim(number_format($moraDiariaPorcentaje, 2), '0'), '.'));
+            $avisoMoraDiaria = "
+            <div style='background:#fff1f2; border:1px solid #fecdd3; border-radius:8px; padding:12px 16px; margin:16px 0; color:#9f1239; font-size:13px;'>
+                <strong>Recargo por mora:</strong> las cuotas que no se paguen en su fecha de vencimiento generan un recargo del <strong>{$porcentajeTexto}% diario</strong> sobre el monto de la cuota vencida.
+            </div>";
         }
 
         cargarEnvParaCorreo();
@@ -120,7 +143,7 @@ function enviarPlanPagosPorCorreo(PDO $pdo, int $contratoId): bool {
                 </thead>
                 <tbody>{$filas}</tbody>
             </table>
-
+            {$avisoMoraDiaria}
             {$enlacePortal}
             <p>Por favor realiza tus pagos a tiempo para evitar cargos por mora.</p>
             <hr style='border:none; border-top:1px solid #e2e8f0; margin:24px 0;'>

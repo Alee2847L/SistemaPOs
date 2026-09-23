@@ -35,14 +35,35 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
 $nombre_empresa = "INVERSIONES J.";
+// mora_diaria_activa / mora_diaria_porcentaje: aviso opcional de recargo por mora
+// diaria en el Plan de Pagos. Es por empresa (una fila de `configuracion` por
+// base de datos), así que un cliente puede tenerlo activado y otro no, sin
+// tocar el código: solo se activa con un UPDATE en la BD de ese cliente
+// (ver migracion_mora_diaria.sql). Si la columna todavía no existe (falta la
+// migración) o algo falla, simplemente no se muestra el aviso.
+$mora_diaria_activa = false;
+$mora_diaria_porcentaje = 0.0;
 try {
-    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    $stmt_config = $pdo->query("SELECT nombre_empresa, mora_diaria_activa, mora_diaria_porcentaje FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
             $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
         }
+        $mora_diaria_activa = !empty($row_config['mora_diaria_activa']);
+        $mora_diaria_porcentaje = (float)($row_config['mora_diaria_porcentaje'] ?? 0);
     }
-} catch (Exception $e) { }
+} catch (Exception $e) {
+    // Si falta la migración (columnas mora_diaria_*), se intenta de nuevo solo con
+    // nombre_empresa para no romper el resto de la pantalla.
+    try {
+        $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+        if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($row_config['nombre_empresa'])) {
+                $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+            }
+        }
+    } catch (Exception $e2) { }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -346,6 +367,15 @@ try {
                     <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
                     <span>Este contrato tiene una <b>prima pendiente de cobro</b>. El plan de pagos y las cuotas se muestran una vez que la prima se cobre en el POS (buscando a este cliente).</span>
                 </div>
+
+                <?php if ($mora_diaria_activa && $mora_diaria_porcentaje > 0): ?>
+                <div id="aviso_mora_diaria_plan" class="bg-rose-50 border border-rose-200 text-rose-800 text-xs p-4 rounded-xl flex items-start gap-2">
+                    <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                    <span>Recargo por mora: las cuotas que no se paguen en su fecha de vencimiento generan un recargo del
+                        <b><?php echo rtrim(rtrim(number_format($mora_diaria_porcentaje, 2), '0'), '.'); ?>% diario</b>
+                        sobre el monto de la cuota vencida.</span>
+                </div>
+                <?php endif; ?>
 
                 <div id="contenedor_tabla_plan_cuotas" class="overflow-x-auto rounded-xl border border-slate-200">
                     <table class="w-full text-left border-collapse">
