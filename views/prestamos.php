@@ -850,9 +850,14 @@ try {
                             saldoRestante -= montoCuota;
                             if (saldoRestante < 0) saldoRestante = 0;
 
-                            const estadoBadge = cuota.estado === 'PAGADO'
-                                ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">PAGADO</span>'
-                                : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">PENDIENTE</span>';
+                            let estadoBadge;
+                            if (cuota.estado === 'PAGADO') {
+                                estadoBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">PAGADO</span>';
+                            } else if (cuota.estado === 'ANULADA') {
+                                estadoBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">ANULADA</span>';
+                            } else {
+                                estadoBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">PENDIENTE</span>';
+                            }
 
                             html += `
                                 <tr class="border-b border-slate-100 hover:bg-slate-50">

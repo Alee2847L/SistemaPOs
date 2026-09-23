@@ -81,6 +81,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 6. Marcar el contrato como CANCELADO (las cuotas quedan como historial, ya no se cobrarán)
         $pdo->prepare("UPDATE contratos SET estado = 'CANCELADO' WHERE id = ?")->execute([$contratoId]);
 
+        // 6.1 Marcar también las cuotas de ese contrato como ANULADAS, para que ya no
+        // aparezcan como "PENDIENTE" en el Plan de Pagos ni en ningún otro listado. El
+        // paso 4 de arriba ya garantizó que ninguna cuota de este contrato está PAGADA
+        // (si lo estuviera, la anulación se habría bloqueado), así que es seguro marcar
+        // todas las cuotas del contrato de una vez.
+        $pdo->prepare("UPDATE cuotas_contrato SET estado = 'ANULADA' WHERE contrato_id = ?")->execute([$contratoId]);
+
         // 6.5 Si el contrato tenía una prima que nunca llegó a cobrarse en POS
         // (prima_venta_id seguía en NULL = pendiente), se marca explícitamente como
         // "cancelada sin cobrar" (prima_venta_id = 0). Esto es un refuerzo, además del

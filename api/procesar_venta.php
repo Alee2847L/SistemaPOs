@@ -3,6 +3,10 @@
 error_reporting(0);
 ini_set('display_errors', 0);
 header('Content-Type: application/json; charset=utf-8');
+// Buffer de salida desde el inicio: permite cerrar la conexión con el navegador
+// justo después de responder (antes de enviar el comprobante o el plan de pagos
+// por correo) incluso si el servidor no usa PHP-FPM. Ver cerrar_conexion_http.php.
+ob_start();
 
 try {
     require_once __DIR__ . '/../config/conexion.php';
@@ -470,10 +474,8 @@ try {
         $ventaParaCorreo    = $ventaId;
         $contratoParaCorreo = isset($contrato_id) ? (int)$contrato_id : null;
 
-        ignore_user_abort(true);
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-        }
+        require_once __DIR__ . '/cerrar_conexion_http.php';
+        cerrarConexionHttpYContinuar();
         require_once __DIR__ . '/enviar_comprobante_venta.php';
         enviarComprobanteVentaPorCorreo($pdo, $ventaParaCorreo, $contratoParaCorreo);
     }
@@ -485,10 +487,8 @@ try {
     // true al mismo tiempo que la condición del bloque anterior, así que la conexión
     // solo se cierra una vez por petición.)
     if (!empty($contratosPrimaCobradaAhora)) {
-        ignore_user_abort(true);
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-        }
+        require_once __DIR__ . '/cerrar_conexion_http.php';
+        cerrarConexionHttpYContinuar();
         require_once __DIR__ . '/enviar_plan_pagos.php';
         foreach ($contratosPrimaCobradaAhora as $contratoIdCobrado) {
             enviarPlanPagosPorCorreo($pdo, $contratoIdCobrado);

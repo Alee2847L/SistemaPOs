@@ -1,6 +1,11 @@
 <?php
 // api/prestamos.php
 header('Content-Type: application/json');
+// Se activa un buffer de salida desde el inicio: así, cuando haya que enviar
+// el plan de pagos por correo después de responder (ver cerrar_conexion_http.php),
+// se puede cerrar la conexión con el navegador de inmediato aunque el servidor
+// no use PHP-FPM (p. ej. Apache con mod_php), y el correo no deja esperando al usuario.
+ob_start();
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -360,10 +365,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Ya se respondió al usuario: si el servidor lo permite (PHP-FPM) se cierra la respuesta
     // antes de enviar, así la pantalla no espera al SMTP. Si el correo falla, el contrato queda igual.
     if ($contratoParaPlan) {
-        ignore_user_abort(true);
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-        }
+        require_once __DIR__ . '/cerrar_conexion_http.php';
+        cerrarConexionHttpYContinuar();
         require_once __DIR__ . '/enviar_plan_pagos.php';
         enviarPlanPagosPorCorreo($pdo, $contratoParaPlan);
     }
