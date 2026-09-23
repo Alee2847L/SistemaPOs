@@ -996,12 +996,14 @@ try {
                 numero_cuenta_entrega: metodoEntrega === 'transferencia' ? numeroCuentaEntrega : null
             };
 
+            // Solo se deshabilita el botón (sin cambiarle el texto ni mostrar un
+            // "Guardando..." que se quede pegado): el guardado del contrato es una
+            // operación rápida contra la base de datos, así que esto solo evita un
+            // doble clic mientras esa respuesta llega.
             enviandoNuevoPrestamo = true;
             const btnSubmit = document.getElementById('btn_submit_prestamo');
             btnSubmit.disabled = true;
             btnSubmit.classList.add('opacity-50', 'cursor-not-allowed');
-            const textoOriginalBtn = btnSubmit.innerHTML;
-            btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
 
             try {
                 const res = await fetch('../api/prestamos.php', {
@@ -1014,21 +1016,26 @@ try {
                     alert('✅ Préstamo y cuotas generados exitosamente.');
                     cerrarModalNuevoPrestamo();
                     cargarPrestamos();
+
+                    // El correo con el plan de pagos (cuando el contrato no tiene prima
+                    // pendiente) se dispara aparte, SIN esperar su respuesta: si el correo
+                    // tarda (SMTP o internet lento), eso ya no bloquea la pantalla, porque
+                    // el contrato ya quedó guardado y el modal ya se cerró arriba.
+                    if (res.enviar_plan_ahora && res.contrato_id) {
+                        fetch(`../api/enviar_plan_pagos_endpoint.php?contrato_id=${res.contrato_id}`)
+                            .catch(err => console.error('No se pudo enviar el plan de pagos por correo:', err));
+                    }
                 } else {
                     alert('❌ Error: ' + res.message);
-                    // Se reactiva el botón para que el usuario pueda corregir y reintentar,
-                    // pero sin permitir un segundo envío mientras este ya está resuelto.
-                    btnSubmit.disabled = false;
-                    btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
-                    btnSubmit.innerHTML = textoOriginalBtn;
                 }
             } catch (err) {
                 console.error(err);
                 alert('Error de conexión con el servidor. Verifique su internet e intente de nuevo.');
+            } finally {
+                // Se reactiva el botón siempre (éxito, error o falla de red), para que
+                // el usuario pueda corregir y reintentar sin quedar bloqueado.
                 btnSubmit.disabled = false;
                 btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
-                btnSubmit.innerHTML = textoOriginalBtn;
-            } finally {
                 enviandoNuevoPrestamo = false;
             }
         });

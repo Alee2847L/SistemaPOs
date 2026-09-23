@@ -1,11 +1,6 @@
 <?php
 // api/prestamos.php
 header('Content-Type: application/json');
-// Se activa un buffer de salida desde el inicio: así, cuando haya que enviar
-// el plan de pagos por correo después de responder (ver cerrar_conexion_http.php),
-// se puede cerrar la conexión con el navegador de inmediato aunque el servidor
-// no use PHP-FPM (p. ej. Apache con mod_php), y el correo no deja esperando al usuario.
-ob_start();
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -275,8 +270,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $contratoParaPlan = null;   // se llena solo si el contrato se guardó bien
-
     try {
         $pdo->beginTransaction();
 
@@ -352,23 +345,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // El plan de pagos por correo solo se envía de inmediato si el contrato NO tiene
         // prima (nada que cobrar antes). Si tiene prima, queda pendiente de cobro en POS,
         // y es procesar_venta.php quien envía el plan justo cuando esa prima se cobra.
-        if ($prima <= 0) {
-            $contratoParaPlan = (int)$contrato_id;
-        }
-        echo json_encode(['success' => true, 'message' => 'Préstamo y cuotas registradas con éxito']);
+        // IMPORTANTE: el correo NO se envía aquí mismo (eso hacía que la pantalla se
+        // quedara esperando el SMTP, a veces mucho tiempo con internet lento, aunque el
+        // contrato ya estaba guardado). En vez de eso, se avisa al navegador con
+        // "enviar_plan_ahora" y es el propio navegador quien llama, sin esperar la
+        // respuesta, a un endpoint aparte (enviar_plan_pagos_endpoint.php) que envía el
+        // correo. Así la pantalla ya no depende de qué tan rápido salga el correo.
+        $contratoIdCreado = (int)$contrato_id;
+        $enviarPlanAhora = ($prima <= 0);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Préstamo y cuotas registradas con éxito',
+            'contrato_id' => $contratoIdCreado,
+            'enviar_plan_ahora' => $enviarPlanAhora
+        ]);
     } catch (Exception $e) {
         $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'Error al guardar: ' . $e->getMessage()]);
-    }
-
-    // Enviar el plan de pagos al cliente por correo (solo cuando no hay prima pendiente).
-    // Ya se respondió al usuario: si el servidor lo permite (PHP-FPM) se cierra la respuesta
-    // antes de enviar, así la pantalla no espera al SMTP. Si el correo falla, el contrato queda igual.
-    if ($contratoParaPlan) {
-        require_once __DIR__ . '/cerrar_conexion_http.php';
-        cerrarConexionHttpYContinuar();
-        require_once __DIR__ . '/enviar_plan_pagos.php';
-        enviarPlanPagosPorCorreo($pdo, $contratoParaPlan);
     }
     exit;
 }

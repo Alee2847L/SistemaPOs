@@ -1432,6 +1432,23 @@ try {
                     alert(mensajeExito);
                     window.open(`imprimir_factura.php?id=${data.venta_id}`, '_blank', 'width=400,height=600');
 
+                    // El comprobante (y el plan de pagos, si aplica) se envían por correo
+                    // aparte, SIN esperar su respuesta: la venta ya quedó guardada, así
+                    // que un correo lento (SMTP o internet lento) ya no debe bloquear el POS.
+                    if (data.enviar_comprobante && data.venta_id) {
+                        let urlComprobante = `../api/enviar_comprobante_venta_endpoint.php?venta_id=${data.venta_id}`;
+                        if (data.contrato_id_comprobante) {
+                            urlComprobante += `&contrato_id=${data.contrato_id_comprobante}`;
+                        }
+                        fetch(urlComprobante).catch(err => console.error('No se pudo enviar el comprobante por correo:', err));
+                    }
+                    if (Array.isArray(data.contratos_prima_cobrada)) {
+                        data.contratos_prima_cobrada.forEach(contratoId => {
+                            fetch(`../api/enviar_plan_pagos_endpoint.php?contrato_id=${contratoId}`)
+                                .catch(err => console.error('No se pudo enviar el plan de pagos por correo:', err));
+                        });
+                    }
+
                     if (esEdicion) {
                         window.location.href = 'transacciones.php';
                     } else {

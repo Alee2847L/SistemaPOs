@@ -3,10 +3,6 @@
 error_reporting(0);
 ini_set('display_errors', 0);
 header('Content-Type: application/json; charset=utf-8');
-// Buffer de salida desde el inicio: permite cerrar la conexión con el navegador
-// justo después de responder (antes de enviar el comprobante o el plan de pagos
-// por correo) incluso si el servidor no usa PHP-FPM. Ver cerrar_conexion_http.php.
-ob_start();
 
 try {
     require_once __DIR__ . '/../config/conexion.php';
@@ -459,41 +455,27 @@ try {
         $msgExito = 'Venta, contrato, cuotas y actualización de límite de crédito registrados con éxito.' . $alertaRango;
     }
 
+    // El comprobante (y el plan de pagos, si aplica) NO se envían por correo aquí
+    // mismo: eso hacía que el POS se quedara esperando la respuesta hasta que el
+    // correo saliera por SMTP (podía tardar mucho con internet lento), aunque la
+    // venta ya estuviera guardada. En vez de eso, se avisa al navegador con estos
+    // datos y es el propio POS quien llama, sin esperar la respuesta, a endpoints
+    // aparte que envían los correos (enviar_comprobante_venta_endpoint.php y
+    // enviar_plan_pagos_endpoint.php). Así la pantalla no depende de qué tan rápido
+    // salga el correo.
+    $enviarComprobanteAhora = (!$esCotizacion && !$esPendiente && !$esPrimaPrestamo);
+    $contratoParaCorreo = isset($contrato_id) ? (int)$contrato_id : null;
+
     echo json_encode([
-        'success' => true, 
-        'venta_id' => $ventaId, 
+        'success' => true,
+        'venta_id' => $ventaId,
         'numero_factura' => $numeroFacturaGenerado,
         'alerta_sar' => $alertaRango,
-        'message' => $msgExito
+        'message' => $msgExito,
+        'enviar_comprobante' => $enviarComprobanteAhora,
+        'contrato_id_comprobante' => $contratoParaCorreo,
+        'contratos_prima_cobrada' => $contratosPrimaCobradaAhora
     ]);
-
-    // Enviar comprobante (y plan de pagos si es crédito) por correo. Solo en venta definitiva,
-    // nunca en cotización ni en orden pendiente. La respuesta ya se envió al POS (arriba);
-    // si el servidor lo permite (PHP-FPM) se cierra la conexión antes de enviar el correo.
-    if (!$esCotizacion && !$esPendiente && !$esPrimaPrestamo) {
-        $ventaParaCorreo    = $ventaId;
-        $contratoParaCorreo = isset($contrato_id) ? (int)$contrato_id : null;
-
-        require_once __DIR__ . '/cerrar_conexion_http.php';
-        cerrarConexionHttpYContinuar();
-        require_once __DIR__ . '/enviar_comprobante_venta.php';
-        enviarComprobanteVentaPorCorreo($pdo, $ventaParaCorreo, $contratoParaCorreo);
-    }
-
-    // Si esta venta fue el cobro de una prima de préstamo pendiente, es hasta AHORA
-    // (ya cobrada) que se envía el plan de pagos por correo al cliente — no se envía
-    // cuando se creó el contrato, para no adelantar un plan que todavía no aplicaba.
-    // (Este bloque y el de arriba son mutuamente excluyentes: $esPrimaPrestamo nunca es
-    // true al mismo tiempo que la condición del bloque anterior, así que la conexión
-    // solo se cierra una vez por petición.)
-    if (!empty($contratosPrimaCobradaAhora)) {
-        require_once __DIR__ . '/cerrar_conexion_http.php';
-        cerrarConexionHttpYContinuar();
-        require_once __DIR__ . '/enviar_plan_pagos.php';
-        foreach ($contratosPrimaCobradaAhora as $contratoIdCobrado) {
-            enviarPlanPagosPorCorreo($pdo, $contratoIdCobrado);
-        }
-    }
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {
