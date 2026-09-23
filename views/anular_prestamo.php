@@ -11,7 +11,7 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 $modulos_permitidos = $_SESSION['modulos_activos'] ?? [];
-if (!in_array('prestamos', $modulos_permitidos)) {
+if (!in_array('devprestamo', $modulos_permitidos)) {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false,
