@@ -254,7 +254,17 @@ try {
                     </div>
                     <?php endif; ?>
 
-                    <?php if ($es_admin && in_array('devprestamos', $modulos_activos)): ?>
+                    <?php if ($es_admin && in_array('repprestamos', $modulos_activos)): ?>
+                    <div onclick="abrirModulo('reportes_prestamos', 'Reporte de Préstamos', 'views/reportes_prestamos.php', '📈')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-purple-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Reporte de Préstamos">
+                        <div class="icono-modulo w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-purple-600 group-hover:text-white">📈</div>
+                        <div class="texto-menu flex-1 lg:w-full overflow-hidden">
+                            <h3 class="font-bold text-slate-900 group-hover:text-purple-600 transition text-sm sm:text-base truncate">Reporte de Préstamos</h3>
+                            <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Otorgados y ganancias por semana/mes.</p>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ($es_admin && in_array('prestamos', $modulos_activos)): ?>
                     <div onclick="abrirModulo('anular_prestamo', 'Devolución de Préstamo', 'views/anular_prestamo.php', '↩️')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-rose-200/60 shadow-xs hover:shadow-md hover:border-rose-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Devolución de Préstamo">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-rose-600 group-hover:text-white">↩️</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
