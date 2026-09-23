@@ -11,6 +11,13 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
+// El cobrador no tiene acceso al módulo de Préstamos (no genera contratos
+// nuevos): su acceso es solo Clientes, Cobros y Recaudo.
+if (($_SESSION['usuario_rol'] ?? '') === 'cobrador') {
+    echo json_encode(['success' => false, 'message' => 'No tienes acceso al módulo de Préstamos.']);
+    exit;
+}
+
 $accion = $_GET['accion'] ?? '';
 
 // 1. Listar contratos con filtro de fechas

@@ -404,10 +404,12 @@ try {
                                 <i class="fa-solid fa-eye"></i>
                             </button>
 
-                            <button type="button" class="bg-emerald-50 text-emerald-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-emerald-100 transition" onclick="irAFacturar('${c.codigo_bp}')">
-                                ${MODULOS_ACTIVOS.includes('pos') ? 'Facturar' : 'Nuevo Préstamo'}
-                            </button>
-                            
+                            ${!esCobrador ? `
+                                <button type="button" class="bg-emerald-50 text-emerald-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-emerald-100 transition" onclick="irAFacturar('${c.codigo_bp}')">
+                                    ${MODULOS_ACTIVOS.includes('pos') ? 'Facturar' : 'Nuevo Préstamo'}
+                                </button>
+                            ` : ''}
+
                             ${esAdmin ? `
                                 <button type="button" class="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-amber-100 transition" onclick="editarCliente('${c.codigo_bp}')">
                                     Editar

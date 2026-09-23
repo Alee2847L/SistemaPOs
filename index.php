@@ -125,7 +125,7 @@ try {
                 <div id="panel-lateral-modulos" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 transition-all duration-300 h-full">
 
                     <!-- PUNTO DE VENTA -->
-                    <?php if (in_array('pos', $modulos_activos)): ?>
+                    <?php if (in_array('pos', $modulos_activos) && !$es_cobrador): ?>
                     <div onclick="abrirModulo('pos', 'Punto de Venta', 'views/pos.php', '🛒')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Punto de Venta">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-emerald-600 group-hover:text-white">🛒</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -136,7 +136,7 @@ try {
                     <?php endif; ?>
 
                     <!-- COTIZACIONES Y ÓRDENES (Condicionado) -->
-                    <?php if (in_array('cotizaciones', $modulos_activos)): ?>
+                    <?php if (in_array('cotizaciones', $modulos_activos) && !$es_cobrador): ?>
                     <div onclick="abrirModulo('cotizaciones', 'Cotizaciones y Órdenes', 'views/cotizaciones.php', '📝')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Cotizaciones y Órdenes">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-blue-600 group-hover:text-white">📝</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -147,7 +147,7 @@ try {
                     <?php endif; ?>
 
                     <!-- PRODUCTOS -->
-                    <?php if (in_array('productos', $modulos_activos)): ?>
+                    <?php if (in_array('productos', $modulos_activos) && !$es_cobrador): ?>
                     <div onclick="abrirModulo('productos', 'Productos', 'views/productos.php', '📦')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Productos">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-amber-600 group-hover:text-white">📦</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -169,7 +169,7 @@ try {
                     <?php endif; ?>
 
                     <!-- PRÉSTAMOS Y CRÉDITOS -->
-                    <?php if (in_array('prestamos', $modulos_activos)): ?>
+                    <?php if (in_array('prestamos', $modulos_activos) && !$es_cobrador): ?>
                     <div onclick="abrirModulo('prestamos', 'Préstamos y Créditos', 'views/prestamos.php', '💳')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-purple-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Préstamos y Créditos">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-purple-600 group-hover:text-white">💳</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -180,7 +180,7 @@ try {
                     <?php endif; ?>
 
                     <!-- TRANSACCIONES -->
-                    <?php if (in_array('transacciones', $modulos_activos)): ?>
+                    <?php if (in_array('transacciones', $modulos_activos) && !$es_cobrador): ?>
                     <div onclick="abrirModulo('transacciones', 'Transacciones', 'views/transacciones.php', '📊')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Transacciones">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-blue-600 group-hover:text-white">📊</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -213,7 +213,7 @@ try {
                     <?php endif; ?>
 
                     <!-- HISTORIAL DE RECAUDOS -->
-                    <?php if (in_array('historial', $modulos_activos)): ?>
+                    <?php if (in_array('historial', $modulos_activos) && !$es_cobrador): ?>
                     <div onclick="abrirModulo('historial_recaudos', 'Historial de Recaudos', 'views/historial_recaudos.php', '📜')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Historial de Recaudos">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-violet-600 group-hover:text-white">📜</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
@@ -358,7 +358,7 @@ try {
                 // quedaba viendo un iframe con "acceso denegado". Ahora abre POS solo
                 // si está disponible; si no, abre la primera tarjeta de módulo que sí
                 // tenga disponible este usuario.
-                <?php if (in_array('pos', $modulos_activos)): ?>
+                <?php if (in_array('pos', $modulos_activos) && !$es_cobrador): ?>
                 abrirModulo('pos', 'Punto de Venta', 'views/pos.php', '🛒');
                 <?php else: ?>
                 const primeraTarjeta = document.querySelector('.tarjeta-menu');

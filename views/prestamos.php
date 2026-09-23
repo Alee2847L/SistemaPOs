@@ -34,6 +34,13 @@ if (!isset($_SESSION['usuario_id'])) {
 $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
+// El cobrador no tiene acceso al módulo de Préstamos (no puede generar
+// contratos nuevos): su acceso es solo Clientes, Cobros y Recaudo.
+if ($rolActual === 'cobrador') {
+    header('Location: ../index.php');
+    exit;
+}
+
 $nombre_empresa = "INVERSIONES J.";
 // mora_diaria_activa / mora_diaria_porcentaje: aviso opcional de recargo por mora
 // diaria en el Plan de Pagos. Es por empresa (una fila de `configuracion` por
