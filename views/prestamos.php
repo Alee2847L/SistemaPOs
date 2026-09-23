@@ -203,8 +203,12 @@ try {
 
                 <div class="grid grid-cols-3 gap-3">
                     <div>
-                        <label class="block font-semibold text-xs text-slate-700 mb-1">Tasa Interés Anual (%):</label>
+                        <label class="block font-semibold text-xs text-slate-700 mb-1" id="lbl_prestamo_tasa">Tasa de Interés (%):</label>
                         <input type="number" step="0.5" min="0" id="prestamo_tasa" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition" value="25" oninput="recalcularSimulacion()">
+                        <label class="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
+                            <input type="checkbox" id="prestamo_tasa_mensual" checked class="rounded border-slate-300 text-purple-600 focus:ring-purple-500" onchange="actualizarLabelTasa(); recalcularSimulacion()">
+                            Interés mensual (desmarca para anual)
+                        </label>
                     </div>
                     <div>
                         <label class="block font-semibold text-xs text-slate-700 mb-1">Frecuencia de Pago:</label>
@@ -330,6 +334,7 @@ try {
         let datosCalculadosPrestamo = null;
 
         document.addEventListener('DOMContentLoaded', () => {
+            actualizarLabelTasa();
             actualizarOpcionesPlazo();
             cargarPrestamos();
         });
@@ -569,10 +574,18 @@ try {
             recalcularSimulacion();
         }
 
+        function actualizarLabelTasa() {
+            const esMensual = document.getElementById('prestamo_tasa_mensual').checked;
+            document.getElementById('lbl_prestamo_tasa').innerText = esMensual
+                ? 'Tasa de Interés Mensual (%):'
+                : 'Tasa de Interés Anual (%):';
+        }
+
         function recalcularSimulacion() {
             const totalFactura = parseFloat(document.getElementById('prestamo_total_factura').value) || 0;
             const prima = parseFloat(document.getElementById('prestamo_prima').value) || 0;
-            const tasaAnual = (parseFloat(document.getElementById('prestamo_tasa').value) || 25) / 100;
+            const tasaIngresada = (parseFloat(document.getElementById('prestamo_tasa').value) || 25) / 100;
+            const tasaEsMensual = document.getElementById('prestamo_tasa_mensual').checked;
             const frecuencia = document.getElementById('prestamo_frecuencia').value;
             const numeroCuotas = parseInt(document.getElementById('prestamo_plazo').value) || 1;
 
@@ -583,9 +596,29 @@ try {
             }
 
             const capitalFinanciable = totalFactura - prima;
-            let periodosAnio = frecuencia === 'mensual' ? 12 : (frecuencia === 'quincenal' ? 24 : 52);
-            let tasaPeriodo = tasaAnual / periodosAnio;
-            let interesTotal = capitalFinanciable * tasaPeriodo * numeroCuotas;
+            let interesTotal;
+
+            if (tasaEsMensual) {
+                // La tasa ingresada es MENSUAL. Se escala según la frecuencia de pago:
+                // - Mensual: cada cuota equivale a 1 mes -> se multiplica directo por las cuotas.
+                // - Quincenal: cada cuota equivale a medio mes -> la tasa mensual se divide entre 2
+                //   antes de multiplicarla por el número de cuotas (2 quincenas = 1 mes).
+                // - Semanal: se multiplica directo por el número de cuotas (regla de este cliente).
+                let tasaPorCuota;
+                if (frecuencia === 'quincenal') {
+                    tasaPorCuota = tasaIngresada / 2;
+                } else {
+                    // mensual o semanal: se aplica la tasa mensual completa por cada cuota
+                    tasaPorCuota = tasaIngresada;
+                }
+                interesTotal = capitalFinanciable * tasaPorCuota * numeroCuotas;
+            } else {
+                // La tasa ingresada es ANUAL (comportamiento original, sin cambios).
+                let periodosAnio = frecuencia === 'mensual' ? 12 : (frecuencia === 'quincenal' ? 24 : 52);
+                let tasaPeriodo = tasaIngresada / periodosAnio;
+                interesTotal = capitalFinanciable * tasaPeriodo * numeroCuotas;
+            }
+
             let totalConInteres = capitalFinanciable + interesTotal;
             let valorCuota = numeroCuotas > 0 ? (totalConInteres / numeroCuotas) : totalConInteres;
 
@@ -601,7 +634,8 @@ try {
                 valorCuota,
                 numeroCuotas,
                 frecuencia,
-                tasaAnual: (tasaAnual * 100),
+                tasaAnual: (tasaIngresada * 100),
+                tasaEsMensual,
                 totalFactura,
                 prima
             };
@@ -656,6 +690,7 @@ try {
 
             document.getElementById('aviso_prima_pendiente').classList.add('hidden');
 
+            actualizarLabelTasa();
             actualizarOpcionesPlazo();
             document.getElementById('modalNuevoPrestamo').classList.remove('hidden');
         }
