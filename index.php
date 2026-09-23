@@ -254,7 +254,7 @@ try {
                     </div>
                     <?php endif; ?>
 
-                    <?php if ($es_admin && in_array('prestamos', $modulos_activos)): ?>
+                    <?php if ($es_admin && in_array('devprestamos', $modulos_activos)): ?>
                     <div onclick="abrirModulo('anular_prestamo', 'Devolución de Préstamo', 'views/anular_prestamo.php', '↩️')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-rose-200/60 shadow-xs hover:shadow-md hover:border-rose-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Devolución de Préstamo">
                         <div class="icono-modulo w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-rose-600 group-hover:text-white">↩️</div>
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
