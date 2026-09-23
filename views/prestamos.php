@@ -234,6 +234,46 @@ try {
                     <i class="fa-solid fa-circle-info"></i> Esta prima quedará <b>pendiente de cobro</b>: se cobra después en el POS, buscando a este cliente, como una venta normal (efectivo/tarjeta).
                 </div>
 
+                <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                    <label class="block font-semibold text-xs text-slate-700 mb-2">
+                        <i class="fa-solid fa-hand-holding-dollar text-purple-600 mr-1"></i> Entrega del Préstamo:
+                    </label>
+                    <div class="flex gap-4 mb-3">
+                        <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none">
+                            <input type="radio" name="prestamo_metodo_entrega" value="efectivo" id="prestamo_entrega_efectivo" checked class="text-purple-600 focus:ring-purple-500" onchange="actualizarCamposEntrega()">
+                            Efectivo
+                        </label>
+                        <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none">
+                            <input type="radio" name="prestamo_metodo_entrega" value="transferencia" id="prestamo_entrega_transferencia" class="text-purple-600 focus:ring-purple-500" onchange="actualizarCamposEntrega()">
+                            Transferencia Bancaria
+                        </label>
+                    </div>
+                    <div id="campos_entrega_transferencia" class="hidden grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-semibold text-xs text-slate-700 mb-1">Banco:</label>
+                            <select id="prestamo_banco_entrega" class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition">
+                                <option value="">Seleccione un banco...</option>
+                                <option value="BAC">BAC (Banco de América Central)</option>
+                                <option value="Banco Atlántida">Banco Atlántida</option>
+                                <option value="Ficohsa">Ficohsa</option>
+                                <option value="Banpaís">Banpaís</option>
+                                <option value="Banco de Occidente">Banco de Occidente</option>
+                                <option value="Banco Popular">Banco Popular</option>
+                                <option value="Davivienda">Davivienda</option>
+                                <option value="Promerica">Promerica</option>
+                                <option value="Lafise">Lafise</option>
+                                <option value="Banhcafé">Banhcafé</option>
+                                <option value="Banco Azteca">Banco Azteca</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-xs text-slate-700 mb-1">Número de Cuenta:</label>
+                            <input type="text" id="prestamo_numero_cuenta_entrega" class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition" placeholder="Ej: 1234567890">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="bg-purple-50 border border-purple-200 p-4 rounded-xl space-y-2">
                     <div class="flex justify-between text-slate-700 text-xs sm:text-sm">
                         <span>Capital Financiar:</span>
@@ -295,6 +335,10 @@ try {
                             Prima: <b id="plan_prima_monto">L. 0.00</b>
                             <span id="plan_prima_badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold"></span>
                         </span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block">Entrega del Préstamo:</span>
+                        <b id="plan_entrega_detalle" class="text-slate-900 text-sm">-</b>
                     </div>
                 </div>
 
@@ -574,6 +618,15 @@ try {
             recalcularSimulacion();
         }
 
+        function actualizarCamposEntrega() {
+            const esTransferencia = document.getElementById('prestamo_entrega_transferencia').checked;
+            document.getElementById('campos_entrega_transferencia').classList.toggle('hidden', !esTransferencia);
+            if (!esTransferencia) {
+                document.getElementById('prestamo_banco_entrega').value = '';
+                document.getElementById('prestamo_numero_cuenta_entrega').value = '';
+            }
+        }
+
         function actualizarLabelTasa() {
             const esMensual = document.getElementById('prestamo_tasa_mensual').checked;
             document.getElementById('lbl_prestamo_tasa').innerText = esMensual
@@ -690,6 +743,11 @@ try {
 
             document.getElementById('aviso_prima_pendiente').classList.add('hidden');
 
+            document.getElementById('prestamo_entrega_efectivo').checked = true;
+            document.getElementById('prestamo_banco_entrega').value = '';
+            document.getElementById('prestamo_numero_cuenta_entrega').value = '';
+            actualizarCamposEntrega();
+
             actualizarLabelTasa();
             actualizarOpcionesPlazo();
             document.getElementById('modalNuevoPrestamo').classList.remove('hidden');
@@ -717,6 +775,15 @@ try {
                         document.getElementById('plan_contrato_id').innerText = c.id;
                         document.getElementById('plan_monto_fin').innerText = 'L. ' + Number(c.monto_financiar).toLocaleString('en-US', {minimumFractionDigits: 2});
                         document.getElementById('plan_total_cred').innerText = 'L. ' + Number(c.total_credito).toLocaleString('en-US', {minimumFractionDigits: 2});
+
+                        // Entrega del préstamo: efectivo o transferencia (con banco y cuenta).
+                        if (c.metodo_entrega === 'transferencia') {
+                            const banco = c.banco_entrega || '-';
+                            const cuenta = c.numero_cuenta_entrega || '-';
+                            document.getElementById('plan_entrega_detalle').innerHTML = `Transferencia<br><span class="text-xs text-slate-600">${escapeHtml(banco)} · Cta. ${escapeHtml(cuenta)}</span>`;
+                        } else {
+                            document.getElementById('plan_entrega_detalle').innerText = 'Efectivo';
+                        }
 
                         // --- Estado de la prima: si el contrato tiene prima y todavía no
                         // se ha cobrado en POS (contratos.prima_venta_id sigue en NULL),
@@ -875,6 +942,15 @@ try {
                 return;
             }
 
+            const metodoEntrega = document.getElementById('prestamo_entrega_transferencia').checked ? 'transferencia' : 'efectivo';
+            const bancoEntrega = document.getElementById('prestamo_banco_entrega').value.trim();
+            const numeroCuentaEntrega = document.getElementById('prestamo_numero_cuenta_entrega').value.trim();
+
+            if (metodoEntrega === 'transferencia' && (!bancoEntrega || !numeroCuentaEntrega)) {
+                alert('Debe seleccionar el banco e indicar el número de cuenta para una entrega por transferencia.');
+                return;
+            }
+
             const payload = {
                 codigo_bp: codigoBp,
                 producto_descripcion: document.getElementById('prestamo_descripcion').value.trim(),
@@ -886,7 +962,10 @@ try {
                 numero_cuotas: datosCalculadosPrestamo.numeroCuotas,
                 plazo_meses: datosCalculadosPrestamo.numeroCuotas,
                 frecuencia: datosCalculadosPrestamo.frecuencia,
-                fecha_primer_pago: document.getElementById('prestamo_fecha_primer_pago').value || fechaPorDefectoPrimerPago()
+                fecha_primer_pago: document.getElementById('prestamo_fecha_primer_pago').value || fechaPorDefectoPrimerPago(),
+                metodo_entrega: metodoEntrega,
+                banco_entrega: metodoEntrega === 'transferencia' ? bancoEntrega : null,
+                numero_cuenta_entrega: metodoEntrega === 'transferencia' ? numeroCuentaEntrega : null
             };
 
             try {

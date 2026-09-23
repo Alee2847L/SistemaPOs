@@ -28,6 +28,7 @@ function enviarPlanPagosPorCorreo(PDO $pdo, int $contratoId): bool {
         $stmt = $pdo->prepare("
             SELECT co.id, co.producto_descripcion, co.total_factura, co.prima, co.monto_financiar,
                    co.porcentaje_interes, co.total_credito, co.plazo_meses, co.fecha_inicio,
+                   co.metodo_entrega, co.banco_entrega, co.numero_cuenta_entrega,
                    cl.Nombre AS cliente_nombre, cl.Correo AS cliente_correo
               FROM contratos co
               JOIN clientes cl ON co.codigo_bp = cl.codigo_bp
@@ -76,6 +77,13 @@ function enviarPlanPagosPorCorreo(PDO $pdo, int $contratoId): bool {
             </tr>";
         }
 
+        // Detalle de la entrega del préstamo: efectivo o transferencia (banco + cuenta).
+        if (($c['metodo_entrega'] ?? 'efectivo') === 'transferencia') {
+            $entregaDetalle = 'Transferencia bancaria — ' . $h($c['banco_entrega'] ?? '-') . ', Cuenta: ' . $h($c['numero_cuenta_entrega'] ?? '-');
+        } else {
+            $entregaDetalle = 'Efectivo';
+        }
+
         cargarEnvParaCorreo();
         $enlacePortal = '';
         if (!empty($_ENV['PORTAL_URL'])) {   // opcional: PORTAL_URL=https://tudominio.com/views/portal.php en el .env
@@ -98,6 +106,7 @@ function enviarPlanPagosPorCorreo(PDO $pdo, int $contratoId): bool {
                 <p style='margin:4px 0;'><strong>Monto financiado:</strong> {$L($c['monto_financiar'])}</p>
                 <p style='margin:4px 0;'><strong>Interés:</strong> {$h(rtrim(rtrim(number_format((float)$c['porcentaje_interes'], 2), '0'), '.'))}%</p>
                 <p style='margin:4px 0;'><strong>Plazo:</strong> {$h($c['plazo_meses'])} meses</p>
+                <p style='margin:4px 0;'><strong>Entrega del préstamo:</strong> {$entregaDetalle}</p>
                 <p style='margin:8px 0 0; font-size:16px; color:#4f46e5;'><strong>Total del crédito: {$L($c['total_credito'])}</strong></p>
             </div>
 

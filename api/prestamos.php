@@ -208,6 +208,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $numero_cuotas = intval($input['numero_cuotas'] ?? 1);
     $frecuencia = $input['frecuencia'] ?? 'mensual';
 
+    // Método de entrega del préstamo: efectivo o transferencia bancaria (con banco y cuenta).
+    $metodo_entrega = $input['metodo_entrega'] ?? 'efectivo';
+    if ($metodo_entrega !== 'transferencia') {
+        $metodo_entrega = 'efectivo';
+    }
+    $banco_entrega = null;
+    $numero_cuenta_entrega = null;
+    if ($metodo_entrega === 'transferencia') {
+        $banco_entrega = trim($input['banco_entrega'] ?? '');
+        $numero_cuenta_entrega = trim($input['numero_cuenta_entrega'] ?? '');
+        if ($banco_entrega === '' || $numero_cuenta_entrega === '') {
+            echo json_encode(['success' => false, 'message' => 'Para una entrega por transferencia debe indicar el banco y el número de cuenta.']);
+            exit;
+        }
+    }
+
     // Fecha del primer pago: por defecto, 15 días después de hoy. El usuario puede elegir otra.
     $fecha_primer_pago_input = trim($input['fecha_primer_pago'] ?? '');
     if ($fecha_primer_pago_input !== '') {
@@ -260,8 +276,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->beginTransaction();
 
         $stmt = $pdo->prepare("
-            INSERT INTO contratos (codigo_bp, producto_descripcion, total_factura, prima, monto_financiar, porcentaje_interes, total_credito, plazo_meses, fecha_inicio, estado, tipo_contrato)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVO', 'prestamo')
+            INSERT INTO contratos (codigo_bp, producto_descripcion, total_factura, prima, monto_financiar, porcentaje_interes, total_credito, plazo_meses, fecha_inicio, estado, tipo_contrato, metodo_entrega, banco_entrega, numero_cuenta_entrega)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVO', 'prestamo', ?, ?, ?)
         ");
         $stmt->execute([
             $codigo_bp,
@@ -271,7 +287,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $monto_financiar,
             $porcentaje_interes,
             $total_credito,
-            $numero_cuotas
+            $numero_cuotas,
+            $metodo_entrega,
+            $banco_entrega,
+            $numero_cuenta_entrega
         ]);
         
         $contrato_id = $pdo->lastInsertId();
