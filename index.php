@@ -20,6 +20,8 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
+$rolActual = strtolower($_SESSION['usuario_rol'] ?? 'vendedor');
+$es_cobrador = ($rolActual === 'cobrador');
 
 // Obtener módulos activos de la sesión (por defecto un arreglo vacío si no existe)
 $modulos_activos = $_SESSION['modulos_activos'] ?? [];
@@ -199,6 +201,17 @@ try {
                     </div>
                     <?php endif; ?>
 
+                    <!-- COBROS (Cobradores) -->
+                    <?php if (in_array('cobros', $modulos_activos) && ($es_admin || $es_cobrador)): ?>
+                    <div onclick="abrirModulo('cobros', 'Cobros', 'views/cobros.php', '🧭')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-amber-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Cobros">
+                        <div class="icono-modulo w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-amber-600 group-hover:text-white">🧭</div>
+                        <div class="texto-menu flex-1 lg:w-full overflow-hidden">
+                            <h3 class="font-bold text-slate-900 group-hover:text-amber-600 transition text-sm sm:text-base truncate">Cobros</h3>
+                            <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Clientes en mora o que vencen hoy.</p>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
                     <!-- HISTORIAL DE RECAUDOS -->
                     <?php if (in_array('historial', $modulos_activos)): ?>
                     <div onclick="abrirModulo('historial_recaudos', 'Historial de Recaudos', 'views/historial_recaudos.php', '📜')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Historial de Recaudos">
@@ -237,6 +250,16 @@ try {
                         <div class="texto-menu flex-1 lg:w-full overflow-hidden">
                             <h3 class="font-bold text-slate-900 group-hover:text-rose-600 transition text-sm sm:text-base truncate">Devoluciones</h3>
                             <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Reembolsos e inventario.</p>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ($es_admin && in_array('prestamos', $modulos_activos)): ?>
+                    <div onclick="abrirModulo('anular_prestamo', 'Devolución de Préstamo', 'views/anular_prestamo.php', '↩️')" class="tarjeta-menu group bg-white p-5 rounded-2xl border border-rose-200/60 shadow-xs hover:shadow-md hover:border-rose-500/50 transition-all flex items-center lg:flex-col lg:justify-between cursor-pointer gap-4" title="Devolución de Préstamo">
+                        <div class="icono-modulo w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg shrink-0 transition-all group-hover:bg-rose-600 group-hover:text-white">↩️</div>
+                        <div class="texto-menu flex-1 lg:w-full overflow-hidden">
+                            <h3 class="font-bold text-slate-900 group-hover:text-rose-600 transition text-sm sm:text-base truncate">Devolución de Préstamo</h3>
+                            <p class="desc-modulo text-slate-500 text-xs mt-0.5 hidden lg:block truncate">Anular un contrato dentro del plazo.</p>
                         </div>
                     </div>
                     <?php endif; ?>
@@ -330,7 +353,17 @@ try {
 
         window.addEventListener('DOMContentLoaded', () => {
             if (window.innerWidth >= 1024) {
+                // Antes esto abría siempre "Punto de Venta" (pos), pero una empresa
+                // que no tenga ese módulo (por ejemplo, solo Préstamos/Cobros) se
+                // quedaba viendo un iframe con "acceso denegado". Ahora abre POS solo
+                // si está disponible; si no, abre la primera tarjeta de módulo que sí
+                // tenga disponible este usuario.
+                <?php if (in_array('pos', $modulos_activos)): ?>
                 abrirModulo('pos', 'Punto de Venta', 'views/pos.php', '🛒');
+                <?php else: ?>
+                const primeraTarjeta = document.querySelector('.tarjeta-menu');
+                if (primeraTarjeta) primeraTarjeta.click();
+                <?php endif; ?>
             }
         });
 

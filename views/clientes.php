@@ -105,7 +105,7 @@ try {
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400"><i class="fa-solid fa-magnifying-glass text-xs"></i></span>
                     <input type="text" id="inputBuscar" placeholder="Buscar por Código BP, DNI o Nombre..." onkeyup="filtrarClientes()" class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition">
                 </div>
-                <button onclick="abrirModalNuevo()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2">
+                <button id="btnNuevoCliente" onclick="abrirModalNuevo()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2">
                     <i class="fa-solid fa-plus"></i> Nuevo Cliente
                 </button>
             </div>
@@ -202,6 +202,13 @@ try {
                         <input type="text" id="cli_direccion" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
                     </div>
 
+                    <div id="contenedor_cobrador" style="display: none;">
+                        <label class="block font-semibold text-xs text-slate-600 mb-1">Cobrador Asignado:</label>
+                        <select id="cli_cobrador_asignado" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                            <option value="">Sin asignar (visible para todos los cobradores)</option>
+                        </select>
+                    </div>
+
                     <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
                         <button type="button" class="px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl" onclick="cerrarModal()">Cancelar</button>
                         <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-xl">Guardar</button>
@@ -267,6 +274,8 @@ try {
 
     <script>
         const esAdmin = <?php echo $es_admin ? 'true' : 'false'; ?>;
+        const esCobrador = <?php echo (strtolower($rolActual) === 'cobrador') ? 'true' : 'false'; ?>;
+        let listaCobradoresOriginal = [];
         // Módulos habilitados para esta empresa (viene de la sesión). Se usa para que
         // "Facturar" lleve a POS solo si ese módulo está disponible; si no (empresas
         // que solo manejan préstamos, como esta), lleva directo a Nuevo Préstamo.
@@ -309,11 +318,39 @@ try {
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('txtClaveAdminCli').addEventListener('keydown', (e) => { 
-                if(e.key === 'Enter') ejecutarEliminacionCliente(); 
+            document.getElementById('txtClaveAdminCli').addEventListener('keydown', (e) => {
+                if(e.key === 'Enter') ejecutarEliminacionCliente();
             });
+            // Un cobrador puede ver la cartera de clientes (filtrada a los que le
+            // corresponden), pero no puede dar de alta clientes nuevos.
+            if (esCobrador) {
+                const btnNuevo = document.getElementById('btnNuevoCliente');
+                if (btnNuevo) btnNuevo.style.display = 'none';
+            }
+            if (esAdmin) {
+                cargarListaCobradores();
+            }
             cargarClientes();
         });
+
+        // Carga la lista de usuarios con rol "cobrador" para el selector de
+        // "Cobrador Asignado" del modal de edición (solo lo ve un administrador).
+        function cargarListaCobradores() {
+            fetch('../api/usuarios.php?accion=listar')
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success || !Array.isArray(res.data)) return;
+                    listaCobradoresOriginal = res.data.filter(u => u.rol === 'cobrador' && Number(u.estado) === 1);
+                    const select = document.getElementById('cli_cobrador_asignado');
+                    if (!select) return;
+                    let opciones = '<option value="">Sin asignar (visible para todos los cobradores)</option>';
+                    listaCobradoresOriginal.forEach(u => {
+                        opciones += `<option value="${u.id}">${escapeHtml(u.nombre)}</option>`;
+                    });
+                    select.innerHTML = opciones;
+                })
+                .catch(() => { /* si falla, el selector queda solo con "Sin asignar" */ });
+        }
 
         function cargarClientes() {
             fetch('../api/clientes.php?accion=listar')
@@ -409,6 +446,7 @@ try {
             document.getElementById('cli_codigo_bp').value = 'AUTOGENERADO';
             document.getElementById('contenedor_estado').style.display = 'none';
             document.getElementById('contenedor_credito').style.display = 'none';
+            document.getElementById('contenedor_cobrador').style.display = 'none';
             document.getElementById('modalCliente').style.display = 'flex';
         }
 
@@ -420,6 +458,7 @@ try {
             document.getElementById('cli_es_edicion').value = '1';
             document.getElementById('contenedor_estado').style.display = 'block';
             document.getElementById('contenedor_credito').style.display = 'grid';
+            document.getElementById('contenedor_cobrador').style.display = esAdmin ? 'block' : 'none';
 
             document.getElementById('cli_codigo_bp').value = cliente.codigo_bp;
             document.getElementById('cli_estado').value = cliente.estado || 'INA';
@@ -431,6 +470,10 @@ try {
             document.getElementById('cli_telefono').value = cliente.Telefono || '';
             document.getElementById('cli_correo').value = cliente.Correo || '';
             document.getElementById('cli_direccion').value = cliente.Direccion || '';
+            const selCobrador = document.getElementById('cli_cobrador_asignado');
+            if (selCobrador) {
+                selCobrador.value = (cliente.cobrador_asignado === null || cliente.cobrador_asignado === undefined) ? '' : String(cliente.cobrador_asignado);
+            }
 
             document.getElementById('modalCliente').style.display = 'flex';
         }
@@ -462,6 +505,9 @@ try {
                 formData.append('estado', document.getElementById('cli_estado').value);
                 formData.append('limite_credito', document.getElementById('cli_limite_credito').value);
                 formData.append('dias_credito', document.getElementById('cli_dias_credito').value);
+                if (esAdmin) {
+                    formData.append('cobrador_asignado', document.getElementById('cli_cobrador_asignado')?.value || '');
+                }
             } else {
                 formData.append('estado', 'INA');
                 formData.append('limite_credito', '0.00');

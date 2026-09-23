@@ -17,21 +17,34 @@ $rolUsuario = $_SESSION['usuario_rol'] ?? 'vendedor';
 // --- 1. LISTAR CLIENTES (Con cálculo de mora y campos nuevos corregidos para SQL estricto) ---
 if ($accion === 'listar') {
     try {
-        $sql = "SELECT 
+        // Un cobrador solo debe ver los clientes que le fueron asignados
+        // (clientes.cobrador_asignado = su usuario_id) más los que todavía no
+        // se le han asignado a nadie (cobrador_asignado IS NULL). Admin y
+        // vendedor siguen viendo la lista completa, igual que siempre.
+        $filtroCobrador = '';
+        $paramsCobrador = [];
+        if ($rolUsuario === 'cobrador') {
+            $filtroCobrador = ' WHERE (c.cobrador_asignado = ? OR c.cobrador_asignado IS NULL) ';
+            $paramsCobrador[] = $_SESSION['usuario_id'];
+        }
+
+        $sql = "SELECT
                     c.*,
                     COALESCE(MAX(DATEDIFF(CURDATE(), cu.fecha_vencimiento)), 0) AS dias_mora
                 FROM clientes c
                 LEFT JOIN contratos con ON c.codigo_bp = con.codigo_bp AND con.estado = 'ACTIVO'
-                LEFT JOIN cuotas_contrato cu ON con.id = cu.contrato_id 
-                    AND cu.estado = 'PENDIENTE' 
+                LEFT JOIN cuotas_contrato cu ON con.id = cu.contrato_id
+                    AND cu.estado = 'PENDIENTE'
                     AND cu.fecha_vencimiento < CURDATE()
-                GROUP BY 
-                    c.codigo_bp, c.estado, c.tipo_cliente, c.rtn_dni, 
-                    c.Nombre, c.limite_credito, c.dias_credito, 
-                    c.Telefono, c.Direccion, c.Correo
+                {$filtroCobrador}
+                GROUP BY
+                    c.codigo_bp, c.estado, c.tipo_cliente, c.rtn_dni,
+                    c.Nombre, c.limite_credito, c.dias_credito,
+                    c.Telefono, c.Direccion, c.Correo, c.cobrador_asignado
                 ORDER BY c.codigo_bp ASC";
 
-        $stmt = $pdo->query($sql);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($paramsCobrador);
         $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['success' => true, 'data' => $clientes, 'rol' => $rolUsuario]);
     } catch (PDOException $e) {
@@ -75,15 +88,27 @@ if ($accion === 'guardar') {
         exit;
     }
 
+    // Un cobrador puede ver clientes, pero no puede crear ni editar ninguno
+    // (solo el administrador administra la cartera de clientes).
+    if ($rolUsuario === 'cobrador') {
+        echo json_encode(['success' => false, 'message' => 'No tienes permisos para agregar o editar clientes.']);
+        exit;
+    }
+
     if ($es_edicion === 1) {
         if ($rolUsuario !== 'admin') {
             echo json_encode(['success' => false, 'message' => 'No tienes permisos para editar clientes. Solo los administradores pueden hacerlo.']);
             exit;
         }
 
+        // El cobrador asignado solo lo puede cambiar un administrador; para
+        // los demás roles (que de todos modos no llegan aquí) se ignora.
+        $cobradorAsignadoRaw = trim($_POST['cobrador_asignado'] ?? '');
+        $cobradorAsignado = ($cobradorAsignadoRaw === '') ? null : intval($cobradorAsignadoRaw);
+
         try {
-            $stmt = $pdo->prepare("UPDATE clientes SET estado = ?, tipo_cliente = ?, rtn_dni = ?, Nombre = ?, limite_credito = ?, dias_credito = ?, Telefono = ?, Direccion = ?, Correo = ? WHERE codigo_bp = ?");
-            $stmt->execute([$estado, $tipo_cliente, $rtn_dni, $nombre, $limite_credito, $dias_credito, $telefono, $direccion, $correo, $codigo_bp]);
+            $stmt = $pdo->prepare("UPDATE clientes SET estado = ?, tipo_cliente = ?, rtn_dni = ?, Nombre = ?, limite_credito = ?, dias_credito = ?, Telefono = ?, Direccion = ?, Correo = ?, cobrador_asignado = ? WHERE codigo_bp = ?");
+            $stmt->execute([$estado, $tipo_cliente, $rtn_dni, $nombre, $limite_credito, $dias_credito, $telefono, $direccion, $correo, $cobradorAsignado, $codigo_bp]);
             echo json_encode(['success' => true, 'message' => 'Cliente actualizado con éxito']);
         } catch (PDOException $e) {
             echo json_encode(['success' => false, 'message' => 'Error al actualizar: ' . $e->getMessage()]);

@@ -335,6 +335,29 @@ try {
             return Math.round(montoCuota * (MORA_DIARIA_PORCENTAJE / 100) * diasMora * 100) / 100;
         }
 
+        document.addEventListener('DOMContentLoaded', () => {
+            abrirRecaudoDesdeUrlSiAplica();
+        });
+
+        // Si se llega desde el módulo de Cobros (o Clientes) con ?codigo_bp=...,
+        // selecciona automáticamente a ese cliente y carga sus contratos activos,
+        // para que el cobrador no tenga que volver a buscarlo a mano.
+        function abrirRecaudoDesdeUrlSiAplica() {
+            const codigoBpUrl = new URLSearchParams(window.location.search).get('codigo_bp');
+            if (!codigoBpUrl) return;
+
+            fetch(`/api/pos_clientes.php?accion=buscar&q=${encodeURIComponent(codigoBpUrl)}`)
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success || !Array.isArray(res.data)) return;
+                    const cliente = res.data.find(c => c.codigo_bp === codigoBpUrl);
+                    if (cliente) {
+                        seleccionarClienteRecaudo(cliente.codigo_bp, cliente.rtn_dni, cliente.Nombre);
+                    }
+                })
+                .catch(() => { /* si falla, el módulo igual queda listo para buscar manualmente */ });
+        }
+
         // --- BUSCADOR DE CLIENTES ---
         function buscarClienteRecaudo(query) {
             clearTimeout(timeoutBusqueda);

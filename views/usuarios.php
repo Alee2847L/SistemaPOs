@@ -151,6 +151,7 @@ try {
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Rol del Sistema:</label>
                     <select id="usu_rol" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required>
                         <option value="vendedor">Vendedor</option>
+                        <option value="cobrador">Cobrador</option>
                         <option value="admin">Administrador</option>
                     </select>
                 </div>
@@ -182,9 +183,11 @@ try {
                 if(res.success) {
                     let html = '';
                     res.data.forEach(u => {
-                        const badgeRol = u.rol === 'admin' 
-                            ? '<span class="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg">Administrador</span>' 
-                            : '<span class="bg-emerald-50 text-emerald-600 border border-emerald-200 text-xs font-semibold px-2.5 py-1 rounded-lg">Vendedor</span>';
+                        const badgeRol = u.rol === 'admin'
+                            ? '<span class="bg-rose-50 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg">Administrador</span>'
+                            : (u.rol === 'cobrador'
+                                ? '<span class="bg-amber-50 text-amber-600 border border-amber-200 text-xs font-semibold px-2.5 py-1 rounded-lg">Cobrador</span>'
+                                : '<span class="bg-emerald-50 text-emerald-600 border border-emerald-200 text-xs font-semibold px-2.5 py-1 rounded-lg">Vendedor</span>');
                         
                         const badgeEstado = Number(u.estado) === 1 
                             ? '<span class="bg-blue-50 text-blue-600 border border-blue-200 text-xs font-semibold px-2.5 py-1 rounded-lg">Activo</span>' 
