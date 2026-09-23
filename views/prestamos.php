@@ -1014,6 +1014,11 @@ try {
 
                 if (res.success) {
                     alert('✅ Préstamo y cuotas generados exitosamente.');
+                    // Se apaga la bandera ANTES de cerrar el modal: cerrarModalNuevoPrestamo()
+                    // se niega a cerrar mientras enviandoNuevoPrestamo siga en true (para que
+                    // el usuario no pueda cerrarlo a la fuerza mientras se está guardando), y
+                    // ese guardado, en este punto, ya terminó.
+                    enviandoNuevoPrestamo = false;
                     cerrarModalNuevoPrestamo();
                     cargarPrestamos();
 
