@@ -411,7 +411,28 @@ try {
             actualizarLabelTasa();
             actualizarOpcionesPlazo();
             cargarPrestamos();
+            abrirPrestamoDesdeUrlSiAplica();
         });
+
+        // Si se llega desde el módulo de Clientes con ?codigo_bp=... (atajo de
+        // "Nuevo Préstamo" para empresas que no tienen el módulo de POS), se abre
+        // el modal de Nuevo Préstamo con ese cliente ya seleccionado.
+        function abrirPrestamoDesdeUrlSiAplica() {
+            const codigoBpUrl = new URLSearchParams(window.location.search).get('codigo_bp');
+            if (!codigoBpUrl) return;
+
+            abrirModalNuevoPrestamo();
+            fetch(`../api/pos_clientes.php?accion=buscar&q=${encodeURIComponent(codigoBpUrl)}`)
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success || !Array.isArray(res.data)) return;
+                    const cliente = res.data.find(c => c.codigo_bp === codigoBpUrl);
+                    if (cliente) {
+                        seleccionarClientePrestamo(cliente.codigo_bp, cliente.Nombre, parseFloat(cliente.limite_credito || 0));
+                    }
+                })
+                .catch(() => { /* si falla, el modal igual queda abierto para buscar manualmente */ });
+        }
 
         function cargarPrestamos() {
             const fechaInicio = document.getElementById('filtroFechaInicio')?.value || '';

@@ -3,6 +3,7 @@
 session_start();
 header('Content-Type: application/json');
 require_once '../config/conexion.php';
+require_once __DIR__ . '/mora_calculo_helper.php';
 
 if (!isset($_SESSION['usuario_id'])) {
     echo json_encode(['success' => false, 'message' => 'No autorizado']);
@@ -98,22 +99,49 @@ try {
     $stmtRecaudo->execute([$id_contrato, $usuario_id, $total_abonado, $tipoPago, $montoEfectivo, $montoTarjeta]);
     $recaudo_id = $pdo->lastInsertId();
 
-    // 3. Actualizar cada cuota seleccionada consultando su monto real de la base de datos y vinculándola al recaudo_id
+    // 3. Actualizar cada cuota seleccionada consultando su monto real de la base de
+    // datos y vinculándola al recaudo_id. Si la empresa tiene activado el recargo por
+    // mora diaria (configuracion.mora_diaria_activa), se recalcula AQUÍ, del lado del
+    // servidor (nunca se confía en lo que mandó el navegador), cuánto recargo le toca
+    // a cada cuota vencida, y monto_pagado queda con cuota + mora (lo que realmente se
+    // cobró), no solo el monto original de la cuota.
+    $configMora = obtenerConfigMoraDiaria($pdo);
+    $totalEsperadoConMora = 0.0;
+
     foreach ($cuotas as $c_id) {
-        $stmtMontoCuota = $pdo->prepare("SELECT monto_cuota FROM cuotas_contrato WHERE id = ?");
-        $stmtMontoCuota->execute([$c_id]);
-        $montoCuotaActual = $stmtMontoCuota->fetchColumn() ?: 0;
+        $stmtMontoCuota = $pdo->prepare("SELECT monto_cuota, fecha_vencimiento FROM cuotas_contrato WHERE id = ? AND contrato_id = ?");
+        $stmtMontoCuota->execute([$c_id, $id_contrato]);
+        $filaCuota = $stmtMontoCuota->fetch(PDO::FETCH_ASSOC);
+        if (!$filaCuota) {
+            throw new Exception("La cuota #{$c_id} no pertenece a este contrato.");
+        }
+
+        $montoCuotaActual = (float)$filaCuota['monto_cuota'];
+        $montoMoraCuota = calcularMontoMora($montoCuotaActual, $filaCuota['fecha_vencimiento'], $configMora, $hoy);
+        $montoCobradoCuota = round($montoCuotaActual + $montoMoraCuota, 2);
+        $totalEsperadoConMora += $montoCobradoCuota;
 
         $stmtUpdateCuota = $pdo->prepare("
-            UPDATE cuotas_contrato 
-            SET estado = 'PAGADO', 
-                monto_pagado = ?, 
-                fecha_pago = NOW(), 
+            UPDATE cuotas_contrato
+            SET estado = 'PAGADO',
+                monto_pagado = ?,
+                fecha_pago = NOW(),
                 usuario_id = ?,
                 recaudo_id = ?
             WHERE id = ? AND contrato_id = ?
         ");
-        $stmtUpdateCuota->execute([$montoCuotaActual, $usuario_id, $recaudo_id, $c_id, $id_contrato]);
+        $stmtUpdateCuota->execute([$montoCobradoCuota, $usuario_id, $recaudo_id, $c_id, $id_contrato]);
+    }
+
+    // El monto abonado (efectivo + tarjeta) debe alcanzar para cubrir las cuotas más
+    // la mora recalculada en el servidor; si sobra, es vuelto (igual que antes), pero
+    // no se permite que falte, así no se puede "esquivar" la mora desde el navegador.
+    $totalEsperadoConMora = round($totalEsperadoConMora, 2);
+    if ($total_abonado + 0.01 < $totalEsperadoConMora) {
+        throw new Exception(
+            "El monto abonado (L. " . number_format($total_abonado, 2) . ") es menor al total a cobrar, " .
+            "incluyendo el recargo por mora (L. " . number_format($totalEsperadoConMora, 2) . ")."
+        );
     }
 
     // 4. Sumar el total abonado al límite de crédito del cliente
@@ -140,4 +168,4 @@ try {
     $pdo->rollBack();
     echo json_encode(['success' => false, 'message' => 'Error en base de datos: ' . $e->getMessage()]);
 }
-?> 
+?>

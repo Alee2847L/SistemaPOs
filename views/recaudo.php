@@ -32,19 +32,34 @@ if (!isset($_SESSION['usuario_id'])) {
 $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 // --- OBTENER EL NOMBRE DE LA EMPRESA DESDE LA BD ---
 $nombre_empresa = "INVERSIONES J.A"; // Valor por defecto
+// mora_diaria_activa / mora_diaria_porcentaje: recargo diario por cuotas vencidas,
+// configurable por empresa (una fila de `configuracion` por base de datos). Ver
+// migracion_mora_diaria.sql. Si la empresa no lo tiene activado, esto queda en
+// false/0 y el recaudo cobra solo la cuota, sin ningún recargo.
+$mora_diaria_activa = false;
+$mora_diaria_porcentaje = 0.0;
 try {
     // Si tu variable de conexión usa otro nombre (ej. $conn), cámbiala aquí
-    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    $stmt_config = $pdo->query("SELECT nombre_empresa, mora_diaria_activa, mora_diaria_porcentaje FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
             $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
         }
+        $mora_diaria_activa = !empty($row_config['mora_diaria_activa']);
+        $mora_diaria_porcentaje = (float)($row_config['mora_diaria_porcentaje'] ?? 0);
     }
 } catch (Exception $e) {
-    // Si ocurre algún error o la tabla no existe, se mantiene el valor por defecto
+    // Si falta la migración (columnas mora_diaria_*) se reintenta solo con
+    // nombre_empresa, para no romper el resto de la pantalla.
+    try {
+        $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+        if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($row_config['nombre_empresa'])) {
+                $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+            }
+        }
+    } catch (Exception $e2) { }
 }
-
-
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -274,6 +289,12 @@ try {
 
     <!-- Script de lógica de recaudo -->
     <script>
+        // Recargo por mora diaria: viene de `configuracion` (por empresa/base de datos).
+        // Si MORA_DIARIA_ACTIVA es false, todo el cálculo de mora de abajo da 0 y el
+        // recaudo cobra solo el monto de la cuota, igual que antes.
+        const MORA_DIARIA_ACTIVA = <?php echo json_encode($mora_diaria_activa); ?>;
+        const MORA_DIARIA_PORCENTAJE = <?php echo json_encode($mora_diaria_porcentaje); ?>;
+
         let clienteSeleccionadoActual = null;
         let contratoSeleccionadoActual = null;
         let listaCuotasContrato = [];
@@ -301,6 +322,17 @@ try {
             const utc1 = Date.UTC(y1, m1 - 1, d1);
             const utc2 = Date.UTC(y2, m2 - 1, d2);
             return Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+        }
+
+        // Recargo por mora de UNA cuota: si la cuota vence HOY, diasMora es 0 y el
+        // recargo da 0 (no se cobra mora el mismo día que vence), aunque igual se
+        // siga marcando/mostrando en rojo como "en mora" en la tabla. Si venció
+        // ANTES de hoy, se cobra el % diario configurado por cada día de atraso.
+        function calcularMontoMoraCuota(montoCuota, diasMora) {
+            if (!MORA_DIARIA_ACTIVA || !(MORA_DIARIA_PORCENTAJE > 0) || diasMora <= 0) {
+                return 0;
+            }
+            return Math.round(montoCuota * (MORA_DIARIA_PORCENTAJE / 100) * diasMora * 100) / 100;
         }
 
         // --- BUSCADOR DE CLIENTES ---
@@ -434,12 +466,21 @@ try {
             const hayMora = listaCuotasContrato.some(c => (c.estado || '').toLowerCase() !== 'pagado' && c.fecha_vencimiento <= hoy);
 
             let html = '';
+            let totalMoraAcumulada = 0;
             listaCuotasContrato.forEach((cuota, index) => {
                 const pagada = (cuota.estado || '').toLowerCase() === 'pagado';
                 const enMora = !pagada && cuota.fecha_vencimiento <= hoy;
                 const diasMora = enMora ? diasEntreFechasISO(cuota.fecha_vencimiento, hoy) : 0;
                 const bloqueadaPorMora = !pagada && hayMora && !enMora;
                 const deshabilitada = pagada || bloqueadaPorMora;
+
+                const montoCuota = Number(cuota.monto);
+                // diasMora ya da 0 si la cuota vence justo hoy, así que el recargo
+                // también da 0 ese día (no se cobra mora el mismo día del vencimiento),
+                // aunque la fila se siga marcando en rojo como "en mora".
+                const montoMora = calcularMontoMoraCuota(montoCuota, diasMora);
+                const montoACobrar = montoCuota + montoMora;
+                if (!pagada) totalMoraAcumulada += montoMora;
 
                 let etiquetaEstado = (cuota.estado || '').toUpperCase();
                 let claseEstado = 'bg-amber-100 text-amber-700';
@@ -450,25 +491,39 @@ try {
                     claseEstado = 'bg-rose-100 text-rose-700';
                 }
 
+                // Columna de monto: si hay recargo por mora, se desglosa cuota + mora
+                // y se muestra el total a cobrar; si no hay mora (o vence hoy mismo,
+                // sin días de atraso todavía), se muestra solo el monto de la cuota.
+                let celdaMonto;
+                if (montoMora > 0) {
+                    celdaMonto = `
+                        <div class="text-slate-600">Cuota: L. ${montoCuota.toFixed(2)}</div>
+                        <div class="text-rose-600">+ Mora (${diasMora} día${diasMora === 1 ? '' : 's'} × ${MORA_DIARIA_PORCENTAJE}%/día): L. ${montoMora.toFixed(2)}</div>
+                        <div class="font-bold text-rose-700">Total a cobrar: L. ${montoACobrar.toFixed(2)}</div>
+                    `;
+                } else {
+                    celdaMonto = `<span class="font-semibold ${enMora ? 'text-rose-700' : 'text-slate-800'}">L. ${montoCuota.toFixed(2)}</span>`;
+                }
+
                 html += `
                     <tr class="hover:bg-slate-50 border-b border-slate-100 ${pagada ? 'bg-slate-100/50 text-slate-400' : ''} ${enMora ? 'bg-rose-50/60' : ''}">
                         <td class="p-2.5 text-center">
-                            <input type="checkbox" class="chk-cuota" value="${cuota.id_cuota}" data-monto="${cuota.monto}" ${deshabilitada ? 'disabled' : ''} title="${bloqueadaPorMora ? 'Debe pagar primero las cuotas en mora' : ''}" onchange="calcularTotalCobrar()">
+                            <input type="checkbox" class="chk-cuota" value="${cuota.id_cuota}" data-monto="${montoACobrar}" ${deshabilitada ? 'disabled' : ''} title="${bloqueadaPorMora ? 'Debe pagar primero las cuotas en mora' : ''}" onchange="calcularTotalCobrar()">
                         </td>
                         <td class="p-2.5 font-bold ${enMora ? 'text-rose-700' : ''}">Cuota #${cuota.numero_cuota}</td>
                         <td class="p-2.5 ${enMora ? 'text-rose-700 font-semibold' : ''}">${cuota.fecha_vencimiento}</td>
-                        <td class="p-2.5 font-semibold ${enMora ? 'text-rose-700' : 'text-slate-800'}">L. ${Number(cuota.monto).toFixed(2)}</td>
+                        <td class="p-2.5">${celdaMonto}</td>
                         <td class="p-2.5"><span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${claseEstado}">${etiquetaEstado}</span></td>
                     </tr>
                 `;
             });
             tbody.innerHTML = html;
 
-            mostrarAvisoMoraCuotas(hayMora, listaCuotasContrato, hoy);
+            mostrarAvisoMoraCuotas(hayMora, listaCuotasContrato, hoy, totalMoraAcumulada);
             calcularTotalCobrar();
         }
 
-        function mostrarAvisoMoraCuotas(hayMora, cuotas, hoy) {
+        function mostrarAvisoMoraCuotas(hayMora, cuotas, hoy, totalMoraAcumulada) {
             const banner = document.getElementById('banner_mora_cuotas');
             const texto = document.getElementById('banner_mora_cuotas_texto');
             const selectModo = document.getElementById('select_tipo_pago_modalidad');
@@ -476,7 +531,11 @@ try {
 
             if (hayMora) {
                 const cuotasVencidas = cuotas.filter(c => (c.estado || '').toLowerCase() !== 'pagado' && c.fecha_vencimiento <= hoy);
-                texto.innerText = `Este contrato tiene ${cuotasVencidas.length} cuota(s) en mora. Solo puede cobrar las cuotas vencidas; no se permite adelantar cuotas futuras hasta que el cliente se ponga al día.`;
+                let mensaje = `Este contrato tiene ${cuotasVencidas.length} cuota(s) en mora. Solo puede cobrar las cuotas vencidas; no se permite adelantar cuotas futuras hasta que el cliente se ponga al día.`;
+                if (MORA_DIARIA_ACTIVA && totalMoraAcumulada > 0) {
+                    mensaje += ` Recargo por mora acumulado (${MORA_DIARIA_PORCENTAJE}% diario): L. ${totalMoraAcumulada.toFixed(2)}.`;
+                }
+                texto.innerText = mensaje;
                 banner.classList.remove('hidden');
                 if (optTotal) optTotal.disabled = true;
                 if (selectModo && selectModo.value === 'total') selectModo.value = 'cuota';

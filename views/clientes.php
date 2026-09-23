@@ -32,14 +32,33 @@ $rolActual = $_SESSION['usuario_rol'] ?? 'vendedor';
 $es_admin = (isset($_SESSION['usuario_rol']) && (strtolower($_SESSION['usuario_rol']) === 'admin' || strtolower($_SESSION['usuario_rol']) === 'administrador'));
 
 $nombre_empresa = "INVERSIONES J.";
+// mora_diaria_activa / mora_diaria_porcentaje: recargo diario por cuotas vencidas,
+// configurable por empresa (una fila de `configuracion` por base de datos). Ver
+// migracion_mora_diaria.sql. Si la empresa no lo tiene activado, esto queda en
+// false/0 y aquí no se muestra ningún recargo, solo el monto de las cuotas.
+$mora_diaria_activa = false;
+$mora_diaria_porcentaje = 0.0;
 try {
-    $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+    $stmt_config = $pdo->query("SELECT nombre_empresa, mora_diaria_activa, mora_diaria_porcentaje FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
             $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
         }
+        $mora_diaria_activa = !empty($row_config['mora_diaria_activa']);
+        $mora_diaria_porcentaje = (float)($row_config['mora_diaria_porcentaje'] ?? 0);
     }
-} catch (Exception $e) {}
+} catch (Exception $e) {
+    // Si falta la migración (columnas mora_diaria_*) se reintenta solo con
+    // nombre_empresa, para no romper el resto de la pantalla.
+    try {
+        $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
+        if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($row_config['nombre_empresa'])) {
+                $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
+            }
+        }
+    } catch (Exception $e2) { }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -248,7 +267,46 @@ try {
 
     <script>
         const esAdmin = <?php echo $es_admin ? 'true' : 'false'; ?>;
+        // Módulos habilitados para esta empresa (viene de la sesión). Se usa para que
+        // "Facturar" lleve a POS solo si ese módulo está disponible; si no (empresas
+        // que solo manejan préstamos, como esta), lleva directo a Nuevo Préstamo.
+        const MODULOS_ACTIVOS = <?php echo json_encode(array_values($modulos_permitidos)); ?>;
+        // Recargo por mora diaria: viene de `configuracion` (por empresa/base de datos).
+        // Si MORA_DIARIA_ACTIVA es false, el cálculo de mora de abajo siempre da 0 y
+        // esta pantalla solo muestra el monto de las cuotas vencidas, igual que antes.
+        const MORA_DIARIA_ACTIVA = <?php echo json_encode($mora_diaria_activa); ?>;
+        const MORA_DIARIA_PORCENTAJE = <?php echo json_encode($mora_diaria_porcentaje); ?>;
         let listaClientesOriginal = [];
+
+        // Fecha de "hoy" en horario LOCAL (no UTC): new Date().toISOString() usa UTC,
+        // lo que puede correr la fecha un día en Honduras (UTC-6) cerca de la
+        // medianoche. Se compara todo como texto 'YYYY-MM-DD', igual que lo guarda la BD.
+        function fechaHoyISO() {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function diasEntreFechasISO(fechaMenor, fechaMayor) {
+            const [y1, m1, d1] = fechaMenor.split('-').map(Number);
+            const [y2, m2, d2] = fechaMayor.split('-').map(Number);
+            const utc1 = Date.UTC(y1, m1 - 1, d1);
+            const utc2 = Date.UTC(y2, m2 - 1, d2);
+            return Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+        }
+
+        // Recargo por mora de UNA cuota: si vence HOY, diasMora es 0 y el recargo da 0
+        // (no se cobra mora el mismo día que vence), aunque la cuota se siga marcando
+        // en rojo como "en mora". Si venció antes de hoy, se cobra el % diario por
+        // cada día de atraso.
+        function calcularMontoMoraCuota(montoCuota, diasMora) {
+            if (!MORA_DIARIA_ACTIVA || !(MORA_DIARIA_PORCENTAJE > 0) || diasMora <= 0) {
+                return 0;
+            }
+            return Math.round(montoCuota * (MORA_DIARIA_PORCENTAJE / 100) * diasMora * 100) / 100;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('txtClaveAdminCli').addEventListener('keydown', (e) => { 
@@ -310,7 +368,7 @@ try {
                             </button>
 
                             <button type="button" class="bg-emerald-50 text-emerald-700 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer hover:bg-emerald-100 transition" onclick="irAFacturar('${c.codigo_bp}')">
-                                Facturar
+                                ${MODULOS_ACTIVOS.includes('pos') ? 'Facturar' : 'Nuevo Préstamo'}
                             </button>
                             
                             ${esAdmin ? `
@@ -333,7 +391,15 @@ try {
         }
 
         function irAFacturar(codigoBp) {
-            window.location.href = `/views/pos.php?codigo_bp=${encodeURIComponent(codigoBp)}`;
+            // Si esta empresa no tiene el módulo de POS habilitado (por ejemplo, un
+            // cliente que solo maneja préstamos), "Facturar" no debe llevar a una
+            // pantalla a la que no tiene acceso: en vez de eso, va directo al módulo
+            // de Préstamos con este cliente ya seleccionado.
+            if (MODULOS_ACTIVOS.includes('pos')) {
+                window.location.href = `/views/pos.php?codigo_bp=${encodeURIComponent(codigoBp)}`;
+            } else {
+                window.location.href = `/views/prestamos.php?codigo_bp=${encodeURIComponent(codigoBp)}`;
+            }
         }
 
         function abrirModalNuevo() {
@@ -489,25 +555,33 @@ try {
 
                     contratos.forEach(c => {
                         const cuotas = c.cuotas || [];
-                        const hoy = new Date().toISOString().slice(0, 10);
+                        const hoy = fechaHoyISO();
 
                         let cuotasPendientes = 0;
                         let cuotasVencidas = 0;
-                        let montoVencido = 0;
+                        let montoVencido = 0;      // suma de las cuotas vencidas, sin mora
+                        let montoMoraAcumulada = 0; // recargo por mora de esas cuotas
                         let proximaCuota = null;
 
                         cuotas.forEach(cuota => {
                             if (cuota.estado === 'PENDIENTE') {
                                 cuotasPendientes++;
-                                if (cuota.fecha_vencimiento < hoy) {
+                                // Una cuota que vence HOY ya cuenta como "en mora" (se marca en
+                                // rojo), igual que en Recaudo, aunque todavía no se le cobre
+                                // recargo (0 días de atraso todavía).
+                                if (cuota.fecha_vencimiento <= hoy) {
                                     cuotasVencidas++;
-                                    montoVencido += parseFloat(cuota.monto_cuota);
+                                    const montoCuota = parseFloat(cuota.monto_cuota);
+                                    const diasMora = diasEntreFechasISO(cuota.fecha_vencimiento, hoy);
+                                    montoVencido += montoCuota;
+                                    montoMoraAcumulada += calcularMontoMoraCuota(montoCuota, diasMora);
                                 } else if (!proximaCuota) {
                                     proximaCuota = cuota;
                                 }
                             }
                         });
 
+                        const totalEnMora = montoVencido + montoMoraAcumulada;
                         const estaEnMora = cuotasVencidas > 0;
                         const estadoBadge = estaEnMora
                             ? `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">EN MORA (${cuotasVencidas} cuotas)</span>`
@@ -552,9 +626,14 @@ try {
                                                 <div class="text-xs text-rose-600">${cuotasVencidas} cuota(s) vencida(s)</div>
                                             </div>
                                             <div class="text-rose-700 font-bold text-lg">
-                                                L. ${montoVencido.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                                                L. ${totalEnMora.toLocaleString('en-US', {minimumFractionDigits: 2})}
                                             </div>
                                         </div>
+                                        ${montoMoraAcumulada > 0 ? `
+                                            <div class="mt-2 pt-2 border-t border-rose-200 text-xs text-rose-600 flex justify-between">
+                                                <span>Cuotas: L. ${montoVencido.toLocaleString('en-US', {minimumFractionDigits: 2})} + Mora (${MORA_DIARIA_PORCENTAJE}%/día): L. ${montoMoraAcumulada.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                                            </div>
+                                        ` : ''}
                                     </div>
                                 ` : `
                                     <div class="mx-4 mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
