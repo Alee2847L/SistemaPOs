@@ -559,8 +559,7 @@ try {
 
                         let cuotasPendientes = 0;
                         let cuotasVencidas = 0;
-                        let montoVencido = 0;      // suma de las cuotas vencidas, sin mora
-                        let montoMoraAcumulada = 0; // recargo por mora de esas cuotas
+                        let cuotasVencidasDetalle = []; // { fecha, montoMora, montoExigible } por cada cuota vencida
                         let proximaCuota = null;
 
                         cuotas.forEach(cuota => {
@@ -573,15 +572,18 @@ try {
                                     cuotasVencidas++;
                                     const montoCuota = parseFloat(cuota.monto_cuota);
                                     const diasMora = diasEntreFechasISO(cuota.fecha_vencimiento, hoy);
-                                    montoVencido += montoCuota;
-                                    montoMoraAcumulada += calcularMontoMoraCuota(montoCuota, diasMora);
+                                    const montoMora = calcularMontoMoraCuota(montoCuota, diasMora);
+                                    cuotasVencidasDetalle.push({
+                                        fecha: cuota.fecha_vencimiento,
+                                        montoMora: montoMora,
+                                        montoExigible: montoCuota + montoMora
+                                    });
                                 } else if (!proximaCuota) {
                                     proximaCuota = cuota;
                                 }
                             }
                         });
 
-                        const totalEnMora = montoVencido + montoMoraAcumulada;
                         const estaEnMora = cuotasVencidas > 0;
                         const estadoBadge = estaEnMora
                             ? `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">EN MORA (${cuotasVencidas} cuotas)</span>`
@@ -619,21 +621,25 @@ try {
                                 </div>
 
                                 ${estaEnMora ? `
-                                    <div class="mx-4 mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl">
-                                        <div class="flex justify-between items-center">
-                                            <div>
-                                                <div class="text-rose-700 font-bold text-sm">⚠ Total en Mora</div>
-                                                <div class="text-xs text-rose-600">${cuotasVencidas} cuota(s) vencida(s)</div>
-                                            </div>
-                                            <div class="text-rose-700 font-bold text-lg">
-                                                L. ${totalEnMora.toLocaleString('en-US', {minimumFractionDigits: 2})}
-                                            </div>
-                                        </div>
-                                        ${montoMoraAcumulada > 0 ? `
-                                            <div class="mt-2 pt-2 border-t border-rose-200 text-xs text-rose-600 flex justify-between">
-                                                <span>Cuotas: L. ${montoVencido.toLocaleString('en-US', {minimumFractionDigits: 2})} + Mora (${MORA_DIARIA_PORCENTAJE}%/día): L. ${montoMoraAcumulada.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                                            </div>
-                                        ` : ''}
+                                    <div class="mx-4 mb-4 rounded-xl border border-rose-200 overflow-hidden">
+                                        <table class="w-full text-xs">
+                                            <thead class="bg-rose-50 text-rose-700 uppercase text-[10px]">
+                                                <tr>
+                                                    <th class="p-2 text-left font-bold">Fecha de Pago</th>
+                                                    <th class="p-2 text-right font-bold">Interés (Mora)</th>
+                                                    <th class="p-2 text-right font-bold">Cuota Exigible</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-rose-100">
+                                                ${cuotasVencidasDetalle.map(cv => `
+                                                    <tr class="bg-rose-50/40">
+                                                        <td class="p-2 text-rose-700 font-semibold">${cv.fecha}</td>
+                                                        <td class="p-2 text-right text-rose-700">L. ${cv.montoMora.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                                                        <td class="p-2 text-right text-rose-700 font-bold">L. ${cv.montoExigible.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 ` : `
                                     <div class="mx-4 mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
