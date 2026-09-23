@@ -45,7 +45,7 @@ try {
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
     </style>
@@ -236,7 +236,13 @@ try {
                     });
                     tbody.innerHTML = html;
 
-                    renderizarGrafico(periodos, agruparPor);
+                    // Aislado en su propio try/catch: si el gráfico falla (por ejemplo, la
+                    // librería no cargó), no debe borrar la tabla que ya se mostró bien.
+                    try {
+                        renderizarGrafico(periodos, agruparPor);
+                    } catch (errGrafico) {
+                        console.error('No se pudo dibujar el gráfico:', errGrafico);
+                    }
                 })
                 .catch(() => {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-rose-500">Error de conexión con el servidor.</td></tr>';
