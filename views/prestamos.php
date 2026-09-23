@@ -236,11 +236,11 @@ try {
 
                 <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
                     <label class="block font-semibold text-xs text-slate-700 mb-2">
-                        <i class="fa-solid fa-hand-holding-dollar text-purple-600 mr-1"></i> Entrega del Préstamo:
+                        <i class="fa-solid fa-hand-holding-dollar text-purple-600 mr-1"></i> Entrega del Préstamo: <span class="text-rose-500">*</span>
                     </label>
                     <div class="flex gap-4 mb-3">
                         <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none">
-                            <input type="radio" name="prestamo_metodo_entrega" value="efectivo" id="prestamo_entrega_efectivo" checked class="text-purple-600 focus:ring-purple-500" onchange="actualizarCamposEntrega()">
+                            <input type="radio" name="prestamo_metodo_entrega" value="efectivo" id="prestamo_entrega_efectivo" class="text-purple-600 focus:ring-purple-500" onchange="actualizarCamposEntrega()">
                             Efectivo
                         </label>
                         <label class="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none">
@@ -740,10 +740,13 @@ try {
             const btnSubmit = document.getElementById('btn_submit_prestamo');
             btnSubmit.disabled = false;
             btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnSubmit.innerHTML = '<i class="fa-solid fa-check"></i> Guardar y Generar Cuotas';
+            enviandoNuevoPrestamo = false;
 
             document.getElementById('aviso_prima_pendiente').classList.add('hidden');
 
-            document.getElementById('prestamo_entrega_efectivo').checked = true;
+            document.getElementById('prestamo_entrega_efectivo').checked = false;
+            document.getElementById('prestamo_entrega_transferencia').checked = false;
             document.getElementById('prestamo_banco_entrega').value = '';
             document.getElementById('prestamo_numero_cuenta_entrega').value = '';
             actualizarCamposEntrega();
@@ -754,6 +757,10 @@ try {
         }
 
         function cerrarModalNuevoPrestamo() {
+            if (enviandoNuevoPrestamo) {
+                alert('Espere a que termine de procesarse el préstamo antes de cerrar esta ventana.');
+                return;
+            }
             document.getElementById('modalNuevoPrestamo').classList.add('hidden');
         }
 
@@ -915,8 +922,17 @@ try {
             }, 500);
         }
 
+        let enviandoNuevoPrestamo = false; // evita envíos duplicados (doble clic, internet lento, etc.)
+
         document.getElementById('formNuevoPrestamo').addEventListener('submit', async function(e) {
             e.preventDefault();
+
+            // Si ya hay una petición en curso para crear este préstamo, se ignora
+            // cualquier envío adicional hasta que termine (éxito o error).
+            if (enviandoNuevoPrestamo) {
+                return;
+            }
+
             const codigoBp = document.getElementById('prestamo_codigo_bp').value;
             if (!codigoBp || codigoBp === '') {
                 alert('Debe seleccionar un cliente válido de la base de datos.');
@@ -942,7 +958,14 @@ try {
                 return;
             }
 
-            const metodoEntrega = document.getElementById('prestamo_entrega_transferencia').checked ? 'transferencia' : 'efectivo';
+            const entregaEfectivo = document.getElementById('prestamo_entrega_efectivo').checked;
+            const entregaTransferencia = document.getElementById('prestamo_entrega_transferencia').checked;
+            if (!entregaEfectivo && !entregaTransferencia) {
+                alert('Debe indicar si la entrega del préstamo será en Efectivo o por Transferencia Bancaria.');
+                return;
+            }
+
+            const metodoEntrega = entregaTransferencia ? 'transferencia' : 'efectivo';
             const bancoEntrega = document.getElementById('prestamo_banco_entrega').value.trim();
             const numeroCuentaEntrega = document.getElementById('prestamo_numero_cuenta_entrega').value.trim();
 
@@ -968,6 +991,13 @@ try {
                 numero_cuenta_entrega: metodoEntrega === 'transferencia' ? numeroCuentaEntrega : null
             };
 
+            enviandoNuevoPrestamo = true;
+            const btnSubmit = document.getElementById('btn_submit_prestamo');
+            btnSubmit.disabled = true;
+            btnSubmit.classList.add('opacity-50', 'cursor-not-allowed');
+            const textoOriginalBtn = btnSubmit.innerHTML;
+            btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
+
             try {
                 const res = await fetch('../api/prestamos.php', {
                     method: 'POST',
@@ -981,10 +1011,20 @@ try {
                     cargarPrestamos();
                 } else {
                     alert('❌ Error: ' + res.message);
+                    // Se reactiva el botón para que el usuario pueda corregir y reintentar,
+                    // pero sin permitir un segundo envío mientras este ya está resuelto.
+                    btnSubmit.disabled = false;
+                    btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btnSubmit.innerHTML = textoOriginalBtn;
                 }
             } catch (err) {
                 console.error(err);
-                alert('Error de conexión con el servidor.');
+                alert('Error de conexión con el servidor. Verifique su internet e intente de nuevo.');
+                btnSubmit.disabled = false;
+                btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+                btnSubmit.innerHTML = textoOriginalBtn;
+            } finally {
+                enviandoNuevoPrestamo = false;
             }
         });
 
