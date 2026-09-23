@@ -137,8 +137,6 @@ document.getElementById('btnVolver').addEventListener('click', () => {
             </div>
         </div>
 
-        <div id="bannerMoraDetalle" class="hidden mb-4 p-3 bg-rose-50 border border-rose-300 rounded-lg text-xs text-rose-700 font-semibold"></div>
-
         <div class="grid grid-cols-2 gap-3 mb-4 text-sm">
             <div class="bg-emerald-50 rounded-lg p-3"><span class="text-slate-500">Total pagado</span><div id="resPagado" class="font-bold text-emerald-700 text-lg"></div></div>
             <div class="bg-amber-50 rounded-lg p-3"><span class="text-slate-500">Saldo pendiente</span><div id="resPendiente" class="font-bold text-amber-700 text-lg"></div></div>
@@ -147,7 +145,16 @@ document.getElementById('btnVolver').addEventListener('click', () => {
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
                 <thead class="bg-slate-50 text-slate-500 uppercase text-[11px]">
-                    <tr><th class="p-2">#</th><th class="p-2">Vencimiento</th><th class="p-2 text-right">Cuota</th><th class="p-2">Fecha de pago</th><th class="p-2 text-center">Estado</th><th class="p-2 text-center no-print">Recibo</th></tr>
+                    <tr>
+                        <th class="p-2">#</th>
+                        <th class="p-2">Vencimiento</th>
+                        <th class="p-2 text-right">Cuota</th>
+                        <th class="p-2 text-right">Interés (Mora)</th>
+                        <th class="p-2 text-right">Cuota Exigible</th>
+                        <th class="p-2">Fecha de pago</th>
+                        <th class="p-2 text-center">Estado</th>
+                        <th class="p-2 text-center no-print">Recibo</th>
+                    </tr>
                 </thead>
                 <tbody id="tablaCuotas"></tbody>
             </table>
@@ -228,23 +235,20 @@ async function verCuotas(id) {
     document.getElementById('resPagado').textContent = money(r.resumen.pagado);
     document.getElementById('resPendiente').textContent = money(r.resumen.pendiente);
 
-    const bannerMora = document.getElementById('bannerMoraDetalle');
-    if (r.resumen.cuotas_en_mora > 0) {
-        bannerMora.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1.5"></i>Tienes ${r.resumen.cuotas_en_mora} cuota(s) en mora, con hasta ${r.resumen.dias_mora_max} día(s) de atraso. Ponte al día para seguir con tu crédito al corriente.`;
-        bannerMora.classList.remove('hidden');
-    } else {
-        bannerMora.classList.add('hidden');
-    }
-
-    document.getElementById('tablaCuotas').innerHTML = r.cuotas.map(q => `
-        <tr class="border-b border-slate-100 ${q.estado === 'EN MORA' ? 'bg-rose-50/60' : ''}">
+    document.getElementById('tablaCuotas').innerHTML = r.cuotas.map(q => {
+        const enMora = q.estado === 'EN MORA';
+        return `
+        <tr class="border-b border-slate-100 ${enMora ? 'bg-rose-50/60' : ''}">
             <td class="p-2 font-bold">${esc(q.numero_cuota)}</td>
-            <td class="p-2 ${q.estado === 'EN MORA' ? 'text-rose-700 font-semibold' : ''}">${esc(q.fecha_vencimiento)}</td>
+            <td class="p-2 ${enMora ? 'text-rose-700 font-semibold' : ''}">${esc(q.fecha_vencimiento)}</td>
             <td class="p-2 text-right">${money(q.monto_cuota)}</td>
+            <td class="p-2 text-right ${enMora ? 'text-rose-700' : 'text-slate-300'}">${enMora ? money(q.monto_mora) : '—'}</td>
+            <td class="p-2 text-right font-bold ${enMora ? 'text-rose-700' : 'text-slate-300'}">${enMora ? money(q.monto_exigible) : '—'}</td>
             <td class="p-2 text-slate-500">${q.fecha_pago ? esc(String(q.fecha_pago).substring(0, 10)) : '—'}</td>
             <td class="p-2 text-center">${badgeCuota(q)}</td>
             <td class="p-2 text-center no-print">${botonRecibo(q)}</td>
-        </tr>`).join('');
+        </tr>`;
+    }).join('');
     const det = document.getElementById('detalle');
     det.classList.remove('hidden');
     det.scrollIntoView({ behavior: 'smooth' });

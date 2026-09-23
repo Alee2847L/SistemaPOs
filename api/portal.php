@@ -13,6 +13,7 @@ set_exception_handler(function (Throwable $e) {
 });
 
 require_once __DIR__ . '/../config/conexion.php';
+require_once __DIR__ . '/mora_calculo_helper.php';
 
 const SESION_MAX_INACTIVIDAD = 1800; // 30 min
 
@@ -102,12 +103,15 @@ if ($accion === 'ver_cuotas') {
 
     $contratoAnulado = ($contrato['estado'] === 'CANCELADO');
     $hoy = date('Y-m-d');
+    $configMora = obtenerConfigMoraDiaria($pdo);
 
     $pagado = 0.0; $pendiente = 0.0; $cuotasEnMora = 0; $diasMoraMax = 0;
     foreach ($cuotas as &$q) {
         $cuota = (float)$q['monto_cuota'];
         $abono = (float)$q['monto_pagado'];
         $q['dias_mora'] = 0;
+        $q['monto_mora'] = 0.0;
+        $q['monto_exigible'] = $cuota;
 
         if ($q['estado'] === 'PAGADO') {
             $pagado += $abono > 0 ? $abono : $cuota;   // por si alguna cuota pagada quedó con monto_pagado en 0
@@ -121,10 +125,15 @@ if ($accion === 'ver_cuotas') {
             $pendiente += max($cuota - $abono, 0);
 
             // En mora: sigue PENDIENTE y su fecha de vencimiento ya pasó (o es hoy).
+            // Si vence hoy, dias_mora da 0 y por lo tanto monto_mora también da 0
+            // (no se cobra recargo el mismo día que vence), pero igual se marca en
+            // rojo como "EN MORA".
             if ($q['fecha_vencimiento'] <= $hoy) {
                 $dias = (new DateTime($q['fecha_vencimiento']))->diff(new DateTime($hoy))->days;
                 $q['estado']    = 'EN MORA';
                 $q['dias_mora'] = $dias;
+                $q['monto_mora'] = calcularMontoMora($cuota, $q['fecha_vencimiento'], $configMora, $hoy);
+                $q['monto_exigible'] = round($cuota + $q['monto_mora'], 2);
                 $cuotasEnMora++;
                 if ($dias > $diasMoraMax) $diasMoraMax = $dias;
             }

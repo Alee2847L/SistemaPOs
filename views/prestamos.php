@@ -43,18 +43,38 @@ $nombre_empresa = "INVERSIONES J.";
 // migración) o algo falla, simplemente no se muestra el aviso.
 $mora_diaria_activa = false;
 $mora_diaria_porcentaje = 0.0;
+// tasa_interes_default / tasa_interes_mensual_default / frecuencia_pago_default:
+// valores por defecto del modal "Nuevo Préstamo", configurables por empresa (una
+// fila de `configuracion` por base de datos, igual que mora_diaria_*). Así, un
+// cliente que casi siempre presta al 18% quincenal lo ve precargado, y otro con
+// otra costumbre ve lo suyo — sin tocar código, solo cambiando estos valores en
+// SU base de datos (ver migracion_defaults_prestamo.sql). El vendedor siempre
+// puede cambiarlos a mano en el propio modal antes de guardar.
+$tasa_interes_default = 25.0;
+$tasa_interes_mensual_default = true;
+$frecuencia_pago_default = 'mensual';
 try {
-    $stmt_config = $pdo->query("SELECT nombre_empresa, mora_diaria_activa, mora_diaria_porcentaje FROM configuracion LIMIT 1");
+    $stmt_config = $pdo->query("SELECT nombre_empresa, mora_diaria_activa, mora_diaria_porcentaje, tasa_interes_default, tasa_interes_mensual_default, frecuencia_pago_default FROM configuracion LIMIT 1");
     if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
         if (!empty($row_config['nombre_empresa'])) {
             $nombre_empresa = htmlspecialchars($row_config['nombre_empresa']);
         }
         $mora_diaria_activa = !empty($row_config['mora_diaria_activa']);
         $mora_diaria_porcentaje = (float)($row_config['mora_diaria_porcentaje'] ?? 0);
+        if (isset($row_config['tasa_interes_default']) && (float)$row_config['tasa_interes_default'] > 0) {
+            $tasa_interes_default = (float)$row_config['tasa_interes_default'];
+        }
+        if (array_key_exists('tasa_interes_mensual_default', $row_config) && $row_config['tasa_interes_mensual_default'] !== null) {
+            $tasa_interes_mensual_default = !empty($row_config['tasa_interes_mensual_default']);
+        }
+        if (!empty($row_config['frecuencia_pago_default']) && in_array($row_config['frecuencia_pago_default'], ['mensual', 'quincenal', 'semanal'], true)) {
+            $frecuencia_pago_default = $row_config['frecuencia_pago_default'];
+        }
     }
 } catch (Exception $e) {
-    // Si falta la migración (columnas mora_diaria_*), se intenta de nuevo solo con
-    // nombre_empresa para no romper el resto de la pantalla.
+    // Si falta la migración (columnas nuevas de `configuracion`), se intenta de
+    // nuevo solo con nombre_empresa para no romper el resto de la pantalla; los
+    // demás valores se quedan en sus valores por defecto de siempre.
     try {
         $stmt_config = $pdo->query("SELECT nombre_empresa FROM configuracion LIMIT 1");
         if ($row_config = $stmt_config->fetch(PDO::FETCH_ASSOC)) {
@@ -225,18 +245,18 @@ try {
                 <div class="grid grid-cols-3 gap-3">
                     <div>
                         <label class="block font-semibold text-xs text-slate-700 mb-1" id="lbl_prestamo_tasa">Tasa de Interés (%):</label>
-                        <input type="number" step="0.5" min="0" id="prestamo_tasa" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition" value="25" oninput="recalcularSimulacion()">
+                        <input type="number" step="0.5" min="0" id="prestamo_tasa" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition" value="<?php echo htmlspecialchars(rtrim(rtrim(number_format($tasa_interes_default, 2), '0'), '.')); ?>" oninput="recalcularSimulacion()">
                         <label class="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
-                            <input type="checkbox" id="prestamo_tasa_mensual" checked class="rounded border-slate-300 text-purple-600 focus:ring-purple-500" onchange="actualizarLabelTasa(); recalcularSimulacion()">
+                            <input type="checkbox" id="prestamo_tasa_mensual" <?php echo $tasa_interes_mensual_default ? 'checked' : ''; ?> class="rounded border-slate-300 text-purple-600 focus:ring-purple-500" onchange="actualizarLabelTasa(); recalcularSimulacion()">
                             Interés mensual (desmarca para anual)
                         </label>
                     </div>
                     <div>
                         <label class="block font-semibold text-xs text-slate-700 mb-1">Frecuencia de Pago:</label>
                         <select id="prestamo_frecuencia" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition" onchange="actualizarOpcionesPlazo()">
-                            <option value="mensual">Mensual</option>
-                            <option value="quincenal">Quincenal</option>
-                            <option value="semanal">Semanal</option>
+                            <option value="mensual" <?php echo $frecuencia_pago_default === 'mensual' ? 'selected' : ''; ?>>Mensual</option>
+                            <option value="quincenal" <?php echo $frecuencia_pago_default === 'quincenal' ? 'selected' : ''; ?>>Quincenal</option>
+                            <option value="semanal" <?php echo $frecuencia_pago_default === 'semanal' ? 'selected' : ''; ?>>Semanal</option>
                         </select>
                     </div>
                     <div>
